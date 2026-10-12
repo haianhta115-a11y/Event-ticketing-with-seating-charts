@@ -1,37 +1,42 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { readActivationToken, activationRequest, resendMessage as deliveryError } from '../auth/registration';
+import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
 
 export default function Activate() {
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get('token');
+  const [token] = useState(() => readActivationToken(window.location));
+  const pending = useRef(null);
   const [status, setStatus] = useState(token ? 'loading' : 'error');
   const [resendEmail, setResendEmail] = useState('');
   const [resendMessage, setResendMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     if (!token) return;
     
-    axiosClient.post('/auth/activate', { token })
-      .then(() => {
-        setStatus('success');
-      })
-      .catch(() => {
-        setStatus('error');
-      });
+    let active = true;
+    pending.current = activationRequest(token, (url, data) => axiosClient.post(url, data), pending.current);
+    // Remove legacy query tokens and fragments from browser history after capture.
+    const query = new URLSearchParams(window.location.search);
+    query.delete('token');
+    window.history.replaceState(null, '', window.location.pathname + (query.size ? '?' + query : ''));
+    pending.current.promise.then(() => { if (active) setStatus('success'); })
+      .catch(() => { if (active) setStatus('error'); });
+    return () => { active = false; };
   }, [token]);
 
   const handleResend = async (e) => {
     e.preventDefault();
     setResendMessage('');
-    if (!resendEmail) return;
+    if (!resendEmail || isSending) return;
+    setIsSending(true);
 
     try {
-      await axiosClient.post('/auth/resend-activation', { email: resendEmail });
-      setResendMessage('If the email is registered, a new link has been sent.');
-    } catch {
-      setResendMessage('If the email is registered, a new link has been sent.');
-    }
+      const response = await axiosClient.post('/auth/resend-activation', { email: resendEmail });
+      setResendMessage(response.data.message);
+    } catch (error) {
+      setResendMessage(deliveryError(error));
+    } finally { setIsSending(false); }
   };
 
   return (
@@ -64,8 +69,8 @@ export default function Activate() {
                 style={{ width: '100%', padding: '8px' }}
               />
             </div>
-            <button type="submit" style={{ width: '100%', padding: '10px', backgroundColor: '#007bff', color: '#fff', border: 'none', marginBottom: '10px' }}>
-              Resend Link
+            <button type="submit" disabled={isSending} style={{ width: '100%', padding: '10px', backgroundColor: '#007bff', color: '#fff', border: 'none', marginBottom: '10px' }}>
+              {isSending ? 'Đang gửi...' : 'Resend Link'}
             </button>
             {resendMessage && <div style={{ color: 'green', marginTop: '10px' }}>{resendMessage}</div>}
           </form>

@@ -22,6 +22,39 @@ namespace EventTicketing.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("EventTicketing.Api.Entities.AccountActivation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("UsedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("account_activations", (string)null);
+                });
+
             modelBuilder.Entity("EventTicketing.Api.Entities.Event", b =>
                 {
                     b.Property<int>("Id")
@@ -72,42 +105,12 @@ namespace EventTicketing.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OwnerUserId");
+
                     b.ToTable("events", null, t =>
                         {
                             t.HasCheckConstraint("CK_events_status", "status IN ('DRAFT', 'PUBLISHED', 'ENDED')");
                         });
-                });
-
-            modelBuilder.Entity("EventTicketing.Api.Entities.Performance", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime?>("EndTime")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("end_time");
-
-                    b.Property<bool>("IsSalesClosed")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_sales_closed");
-
-                    b.Property<DateTime?>("StartTime")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("start_time");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("title");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("performances", (string)null);
                 });
 
             modelBuilder.Entity("EventTicketing.Api.Entities.Role", b =>
@@ -177,10 +180,6 @@ namespace EventTicketing.Api.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("number");
 
-                    b.Property<int>("PerformanceId")
-                        .HasColumnType("integer")
-                        .HasColumnName("performance_id");
-
                     b.Property<string>("Row")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -191,20 +190,36 @@ namespace EventTicketing.Api.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("seat_category_id");
 
+                    b.Property<int>("ShowtimeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("showtime_id");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
+                    b.Property<int>("X")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("y");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("PerformanceId", "SeatCategoryId");
+                    b.HasIndex("ShowtimeId", "SeatCategoryId");
 
-                    b.HasIndex("PerformanceId", "Row", "Number")
+                    b.HasIndex("ShowtimeId", "Row", "Number")
                         .IsUnique();
 
-                    b.HasIndex("PerformanceId", "Status", "HeldUntil");
+                    b.HasIndex("ShowtimeId", "Status", "HeldUntil");
 
                     b.ToTable("seats", null, t =>
                         {
@@ -233,13 +248,13 @@ namespace EventTicketing.Api.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("normalized_name");
 
-                    b.Property<int>("PerformanceId")
+                    b.Property<int>("ShowtimeId")
                         .HasColumnType("integer")
-                        .HasColumnName("performance_id");
+                        .HasColumnName("showtime_id");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PerformanceId", "NormalizedName")
+                    b.HasIndex("ShowtimeId", "NormalizedName")
                         .IsUnique();
 
                     b.ToTable("seat_categories", (string)null);
@@ -330,9 +345,9 @@ namespace EventTicketing.Api.Migrations
                         {
                             Id = 1,
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Email = "admin@example.com",
+                            Email = "superadmin@example.com",
                             Name = "Admin User",
-                            PasswordHash = "$argon2id$v=19$m=1024,t=4,p=1$e/uWMrsUacwSe+MinnJdvw$bfqciaQS7Vh7mbrj4O9AYaIAkcSDBCN1ZA907doLVZE",
+                            PasswordHash = "$argon2id$v=19$m=1024,t=4,p=1$tbY-CiTwfCaubv6wWX_naA$ec5RuEDByqu92ehlxijZ4ZVuZJ4_Hq-Lrjt0LrNVQyI_I",
                             Status = "Active",
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
@@ -375,16 +390,46 @@ namespace EventTicketing.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("EventTicketing.Api.Entities.AccountActivation", b =>
+                {
+                    b.HasOne("EventTicketing.Api.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("EventTicketing.Api.Entities.Event", b =>
+                {
+                    b.HasOne("EventTicketing.Api.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("EventTicketing.Api.Entities.Seat", b =>
                 {
                     b.HasOne("EventTicketing.Api.Entities.SeatCategory", "SeatCategory")
                         .WithMany("Seats")
-                        .HasForeignKey("PerformanceId", "SeatCategoryId")
-                        .HasPrincipalKey("PerformanceId", "Id")
+                        .HasForeignKey("ShowtimeId", "SeatCategoryId")
+                        .HasPrincipalKey("ShowtimeId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("SeatCategory");
+                });
+
+            modelBuilder.Entity("EventTicketing.Api.Entities.SeatCategory", b =>
+                {
+                    b.HasOne("EventTicketing.Api.Entities.Showtime", "Showtime")
+                        .WithMany()
+                        .HasForeignKey("ShowtimeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Showtime");
                 });
 
             modelBuilder.Entity("EventTicketing.Api.Entities.Showtime", b =>

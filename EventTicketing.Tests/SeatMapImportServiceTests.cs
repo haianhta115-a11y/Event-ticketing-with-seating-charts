@@ -1,18 +1,20 @@
 using EventTicketing.Api.Data;
 using EventTicketing.Api.Entities;
 using EventTicketing.Api.SeatMaps;
-using Microsoft.Data.Sqlite;
+using EventTicketing.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace EventTicketing.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class SeatMapImportServiceTests
 {
     [Fact]
     public async Task ImportAsync_CreatesAllSeatsAndMissingCategories()
     {
-        await using var database = await TestDatabase.CreateAsync();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await LocalPostgresDatabase.EnsureShowtimeAsync(database.Context, 10);
         var importer = new SeatMapImportService(database.Context, TimeProvider.System);
 
         var result = await importer.ImportAsync(10, Map(
@@ -33,7 +35,8 @@ public sealed class SeatMapImportServiceTests
     [Fact]
     public async Task ImportAsync_ReplacesTheWholeExistingMap()
     {
-        await using var database = await TestDatabase.CreateAsync();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await LocalPostgresDatabase.EnsureShowtimeAsync(database.Context, 20);
         var importer = new SeatMapImportService(database.Context, TimeProvider.System);
         await importer.ImportAsync(20, Map(("OLD", "1", "Standard"), ("OLD", "2", "Standard")));
 
@@ -49,7 +52,8 @@ public sealed class SeatMapImportServiceTests
     [Fact]
     public async Task ImportAsync_WhenASeatWasSold_BlocksReplacementAndKeepsOldMap()
     {
-        await using var database = await TestDatabase.CreateAsync();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await LocalPostgresDatabase.EnsureShowtimeAsync(database.Context, 30);
         var importer = new SeatMapImportService(database.Context, TimeProvider.System);
         await importer.ImportAsync(30, Map(("A", "1", "VIP")));
         var oldSeat = await database.Context.Seats.SingleAsync();
@@ -67,8 +71,9 @@ public sealed class SeatMapImportServiceTests
     [Fact]
     public async Task ImportAsync_WhenASeatHasAnActiveHold_BlocksReplacementAndKeepsOldMap()
     {
-        await using var database = await TestDatabase.CreateAsync();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
         var clock = new FixedTimeProvider(new DateTimeOffset(2026, 9, 30, 10, 0, 0, TimeSpan.Zero));
+        await LocalPostgresDatabase.EnsureShowtimeAsync(database.Context, 40);
         var importer = new SeatMapImportService(database.Context, clock);
         await importer.ImportAsync(40, Map(("A", "1", "VIP")));
         var oldSeat = await database.Context.Seats.SingleAsync();
@@ -88,8 +93,9 @@ public sealed class SeatMapImportServiceTests
     [Fact]
     public async Task ImportAsync_WhenAHoldExpired_AllowsReplacement()
     {
-        await using var database = await TestDatabase.CreateAsync();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
         var clock = new FixedTimeProvider(new DateTimeOffset(2026, 9, 30, 10, 0, 0, TimeSpan.Zero));
+        await LocalPostgresDatabase.EnsureShowtimeAsync(database.Context, 50);
         var importer = new SeatMapImportService(database.Context, clock);
         await importer.ImportAsync(50, Map(("A", "1", "VIP")));
         var oldSeat = await database.Context.Seats.SingleAsync();
@@ -109,7 +115,8 @@ public sealed class SeatMapImportServiceTests
     public async Task ImportAsync_WhenWritingBatchContainingSeat1500Fails_RollsBackEverything()
     {
         var failure = new FailOnSaveInterceptor(4);
-        await using var database = await TestDatabase.CreateAsync(failure);
+        await using var database = await LocalPostgresDatabase.CreateAsync(failure);
+        await LocalPostgresDatabase.EnsureShowtimeAsync(database.Context, 60);
         var importer = new SeatMapImportService(database.Context, TimeProvider.System);
         var document = new SeatMapImportDocument
         {
@@ -136,7 +143,8 @@ public sealed class SeatMapImportServiceTests
     public async Task ImportAsync_WhenReplacingMapFails_RestoresTheOldMapAndCategories()
     {
         var failure = new FailOnSaveInterceptor(4);
-        await using var database = await TestDatabase.CreateAsync(failure);
+        await using var database = await LocalPostgresDatabase.CreateAsync(failure);
+        await LocalPostgresDatabase.EnsureShowtimeAsync(database.Context, 65);
         var importer = new SeatMapImportService(database.Context, TimeProvider.System);
         await importer.ImportAsync(65, Map(("OLD", "1", "VIP")));
         var replacement = new SeatMapImportDocument
@@ -164,7 +172,8 @@ public sealed class SeatMapImportServiceTests
     [Fact]
     public async Task ImportAsync_WhenASeatEntryIsNull_ReturnsValidationErrorWithoutWriting()
     {
-        await using var database = await TestDatabase.CreateAsync();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await LocalPostgresDatabase.EnsureShowtimeAsync(database.Context, 70);
         var importer = new SeatMapImportService(database.Context, TimeProvider.System);
         var document = new SeatMapImportDocument
         {
@@ -189,38 +198,6 @@ public sealed class SeatMapImportServiceTests
                 Category = seat.Category
             }).ToList()
         };
-    }
-
-    private sealed class TestDatabase : IAsyncDisposable
-    {
-        private readonly SqliteConnection connection;
-
-        private TestDatabase(SqliteConnection connection, AppDbContext context)
-        {
-            this.connection = connection;
-            Context = context;
-        }
-
-        public AppDbContext Context { get; }
-
-        public static async Task<TestDatabase> CreateAsync(params IInterceptor[] interceptors)
-        {
-            var connection = new SqliteConnection("Data Source=:memory:");
-            await connection.OpenAsync();
-            var options = new DbContextOptionsBuilder<AppDbContext>()
-                .UseSqlite(connection)
-                .AddInterceptors(interceptors)
-                .Options;
-            var context = new AppDbContext(options);
-            await context.Database.EnsureCreatedAsync();
-            return new TestDatabase(connection, context);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            await Context.DisposeAsync();
-            await connection.DisposeAsync();
-        }
     }
 
     private sealed class FailOnSaveInterceptor(int saveNumber) : SaveChangesInterceptor

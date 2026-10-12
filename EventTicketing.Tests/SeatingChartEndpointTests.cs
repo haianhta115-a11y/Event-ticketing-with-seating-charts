@@ -6,48 +6,23 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Moq;
-using StackExchange.Redis;
+using EventTicketing.Tests.Infrastructure;
 using EventTicketing.Api.Data;
 using EventTicketing.Api.Models.SeatingChart;
 using Xunit;
 
 namespace EventTicketing.Tests;
 
+[Trait("Category", "Integration")]
 public class SeatingChartEndpointTests
 {
-    private WebApplicationFactory<Program> CreateTestFactory()
-    {
-        var mockRedis = new Mock<IConnectionMultiplexer>();
-        mockRedis.Setup(r => r.IsConnected).Returns(true);
-
-        return new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseEnvironment("Testing");
-                builder.ConfigureServices(services =>
-                {
-                    var dbDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<AppDbContext>));
-                    if (dbDescriptor != null) services.Remove(dbDescriptor);
-
-                    services.AddDbContext<AppDbContext>(options =>
-                    {
-                        options.UseSqlite("DataSource=:memory:");
-                    });
-
-                    var redisDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IConnectionMultiplexer));
-                    if (redisDescriptor != null) services.Remove(redisDescriptor);
-
-                    services.AddSingleton<IConnectionMultiplexer>(mockRedis.Object);
-                });
-            });
-    }
-
     [Fact]
     public async Task ValidateEndpoint_WhenValidJson_Returns200OK_WithValidationSummary()
     {
-        using var factory = CreateTestFactory();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var factory = new LocalApplicationFactory(database);
         using var client = factory.CreateClient();
+        factory.Authenticate(client, 201, "Organizer");
 
         var validJson = @"
         {
@@ -85,8 +60,10 @@ public class SeatingChartEndpointTests
     [Fact]
     public async Task ValidateEndpoint_WhenInvalidSeatPrice_Returns400BadRequest_AndRejectsEntirely()
     {
-        using var factory = CreateTestFactory();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var factory = new LocalApplicationFactory(database);
         using var client = factory.CreateClient();
+        factory.Authenticate(client, 201, "Organizer");
 
         var invalidJson = @"
         {
@@ -127,8 +104,10 @@ public class SeatingChartEndpointTests
     [Fact]
     public async Task UploadEndpoint_WhenInvalidLayout_RejectsEntireFile_Returns400BadRequest()
     {
-        using var factory = CreateTestFactory();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var factory = new LocalApplicationFactory(database);
         using var client = factory.CreateClient();
+        factory.Authenticate(client, 201, "Organizer");
 
         var invalidJson = @"
         {
@@ -165,8 +144,10 @@ public class SeatingChartEndpointTests
     [Fact]
     public async Task UploadEndpoint_WhenValidLayout_Returns201Created()
     {
-        using var factory = CreateTestFactory();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var factory = new LocalApplicationFactory(database);
         using var client = factory.CreateClient();
+        factory.Authenticate(client, 201, "Organizer");
 
         var validJson = @"
         {
@@ -203,8 +184,10 @@ public class SeatingChartEndpointTests
     [Fact]
     public async Task UploadEndpoint_WithMultipartJsonFile_WhenValid_Returns201Created()
     {
-        using var factory = CreateTestFactory();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var factory = new LocalApplicationFactory(database);
         using var client = factory.CreateClient();
+        factory.Authenticate(client, 201, "Organizer");
 
         var validJson = @"
         {
@@ -237,8 +220,10 @@ public class SeatingChartEndpointTests
     [Fact]
     public async Task UploadEndpoint_WithMultipartNonJsonFile_Returns400BadRequest()
     {
-        using var factory = CreateTestFactory();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var factory = new LocalApplicationFactory(database);
         using var client = factory.CreateClient();
+        factory.Authenticate(client, 201, "Organizer");
 
         using var form = new MultipartFormDataContent();
         var fileContent = new ByteArrayContent(Encoding.UTF8.GetBytes("plain text file"));
@@ -255,8 +240,10 @@ public class SeatingChartEndpointTests
     [Fact]
     public async Task TemplateEndpoint_Returns200OK_WithValidSeatingChartTemplate()
     {
-        using var factory = CreateTestFactory();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var factory = new LocalApplicationFactory(database);
         using var client = factory.CreateClient();
+        factory.Authenticate(client, 201, "Organizer");
 
         var response = await client.GetAsync("/api/seating-charts/template");
 

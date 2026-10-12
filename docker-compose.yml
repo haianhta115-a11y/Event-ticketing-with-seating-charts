@@ -1,15 +1,13 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
     container_name: event_ticketing_db
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ${DB_USER:?Set DB_USER for the local database}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD for the local database}
       POSTGRES_DB: event_ticketing
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -17,7 +15,7 @@ services:
     image: redis:7-alpine
     container_name: event_ticketing_redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
 

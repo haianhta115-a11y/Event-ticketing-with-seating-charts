@@ -30,7 +30,7 @@ public static class PublicEventEndpoints
 
             var now = timeProvider.GetUtcNow().UtcDateTime;
 
-            var cacheKey = $"events:open:limit={take}:cursor={cursor ?? "none"}";
+            var cacheKey = $"events:open:v2:limit={take}:cursor={cursor ?? "none"}";
             IDatabase? redisDb = null;
             try
             {
@@ -135,7 +135,7 @@ public static class PublicEventEndpoints
                 NextCursor = nextCursor
             };
 
-            if (redisDb != null)
+            if (redisDb != null && responseItems.Count > 0)
             {
                 try
                 {
