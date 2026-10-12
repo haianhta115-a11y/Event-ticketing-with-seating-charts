@@ -24,7 +24,7 @@ public class CustomAuthorizationMiddlewareResultHandler : IAuthorizationMiddlewa
         if (authorizeResult.Forbidden && authorizeResult.AuthorizationFailure != null)
         {
             _logger.LogWarning("User {User} lacks required role/policy to access {Path}",
-                context.User.Identity?.Name ?? "Unknown",
+                AccessPolicies.UserId(context.User)?.ToString() ?? "Unknown",
                 context.Request.Path);
         }
 

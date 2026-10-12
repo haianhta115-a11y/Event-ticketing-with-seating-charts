@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { startHoldCountdown } from '../events/holdCountdown';
 import {
   getPerformanceSeats,
   holdSeat,
@@ -16,6 +17,10 @@ import {
  * AC 5: Đồng hồ client lệch 5 phút -> tính chính xác theo Server-authoritative timestamp.
  */
 export default function SeatReservation({ performanceId, currentUserId }) {
+  return <SeatReservationScreen key={`${performanceId}:${currentUserId}`} performanceId={performanceId} currentUserId={currentUserId} />;
+}
+
+function SeatReservationScreen({ performanceId, currentUserId }) {
   const [seats, setSeats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -25,8 +30,6 @@ export default function SeatReservation({ performanceId, currentUserId }) {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [serverTimeOffsetMs, setServerTimeOffsetMs] = useState(0); // Độ lệch giữa server và client
   const [expiresAtUtc, setExpiresAtUtc] = useState(null);
-
-  const timerRef = useRef(null);
 
   // Calibrate client clock with server time (AC 5)
   const calibrateClock = useCallback((serverTimeUtcStr, heldUntilUtcStr, initialRemainingSeconds) => {
@@ -49,53 +52,40 @@ export default function SeatReservation({ performanceId, currentUserId }) {
     }
   }, []);
 
-  // Countdown Interval loop based on calibrated clock (AC 5)
-  useEffect(() => {
-    if (!expiresAtUtc || remainingSeconds <= 0) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      return;
-    }
-
-    timerRef.current = setInterval(() => {
-      const currentCalibratedServerTime = Date.now() + serverTimeOffsetMs;
-      const targetExpiryMs = new Date(expiresAtUtc).getTime();
-      const diffSeconds = Math.max(0, Math.floor((targetExpiryMs - currentCalibratedServerTime) / 1000));
-
-      setRemainingSeconds(diffSeconds);
-
-      if (diffSeconds <= 0) {
-        clearInterval(timerRef.current);
-        setExpiresAtUtc(null);
-        setHeldSeats([]);
-        // Tự động tải lại sơ đồ khi phiên giữ chỗ hết hạn
-        loadSeats();
-      }
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [expiresAtUtc, serverTimeOffsetMs]);
-
-  // Load seats from server
-  const loadSeats = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await getPerformanceSeats(performanceId, currentUserId);
+  // Load seats before effects that depend on its stable callback.
+  const loadSeats = useCallback(() => getPerformanceSeats(performanceId, currentUserId)
+    .then(data => {
       setSeats(data.seats || []);
-
-      // Kiểm tra xem user có phiên giữ chỗ sẵn có không
-      const session = await getMyHoldSession(performanceId, currentUserId).catch(() => null);
+      return getMyHoldSession(performanceId, currentUserId).catch(() => null);
+    })
+    .then(session => {
       if (session && session.remainingSeconds > 0) {
         setHeldSeats(session.heldSeats || []);
         calibrateClock(session.serverTimeUtc, session.heldUntilUtc, session.remainingSeconds);
       }
-    } catch (err) {
+    })
+    .catch(err => {
       console.error('Lỗi khi tải sơ đồ ghế:', err);
-    } finally {
-      setLoading(false);
+    })
+    .finally(() => setLoading(false)), [performanceId, currentUserId, calibrateClock]);
+
+  // The boolean changes only when starting/ending, not on each positive tick.
+  const hasActiveCountdown = remainingSeconds > 0;
+  // Countdown Interval loop based on calibrated clock (AC 5)
+  useEffect(() => {
+    if (!expiresAtUtc || !hasActiveCountdown) {
+      return;
     }
-  }, [performanceId, currentUserId, calibrateClock]);
+    return startHoldCountdown({
+      expiresAtUtc, serverTimeOffsetMs, onTick: setRemainingSeconds,
+      onExpired: () => {
+        setExpiresAtUtc(null);
+        setHeldSeats([]);
+        setLoading(true);
+        loadSeats();
+      },
+    });
+  }, [expiresAtUtc, serverTimeOffsetMs, hasActiveCountdown, loadSeats]);
 
   useEffect(() => {
     loadSeats();

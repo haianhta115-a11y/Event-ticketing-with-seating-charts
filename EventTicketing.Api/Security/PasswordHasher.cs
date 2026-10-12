@@ -6,6 +6,11 @@ namespace EventTicketing.Api.Security;
 
 public static class PasswordHasher
 {
+    private static readonly Lazy<string> DummyHash = new(() => HashPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(32))));
+
+    public static bool VerifyPasswordOrDummy(string? hash, string password) =>
+        VerifyPassword(hash ?? DummyHash.Value, password);
+
     public static string HashPassword(string password)
     {
         const int memorySize = 1024;

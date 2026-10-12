@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getShowtimeSeats } from '../api/seatsApi';
+import { getShowtimeSeats, holdSeat } from '../api/seatsApi';
 
 /**
  * Tối ưu hóa từng ghế bằng React.memo để tránh render lại toàn bộ hàng nghìn ghế.
  * Không gắn onClick riêng cho từng ghế để đạt hiệu năng cao nhất (dùng event delegation).
  */
-const SeatItem = React.memo(function SeatItem({ seat, pixelX, pixelY, size, isSelected }) {
-  const isAvailable = seat.status === 'Available';
-  const isHeld = seat.status === 'Held';
+const SeatItem = React.memo(function SeatItem({ seat, pixelX, pixelY, size, isSelected, onClick }) {
+  const isAvailable = seat.displayStatus === 'Available';
+  const isHeld = seat.displayStatus === 'HeldByMe' || seat.displayStatus === 'HeldByOther';
 
   // Màu sắc và ký hiệu tường minh cho 3 trạng thái
   const fillColor = isAvailable ? '#16a34a' : isHeld ? '#d97706' : '#4b5563';
@@ -26,6 +26,7 @@ const SeatItem = React.memo(function SeatItem({ seat, pixelX, pixelY, size, isSe
       aria-label={label}
       role="button"
       style={{ outline: 'none', cursor: 'pointer' }}
+      onClick={() => { if ((seat.displayStatus === 'Available' || seat.displayStatus === 'HeldByMe' || seat.displayStatus === 'HeldByOther') && onClick) onClick(seat); }}
     >
       <title>{label}</title>
       <rect
@@ -38,6 +39,7 @@ const SeatItem = React.memo(function SeatItem({ seat, pixelX, pixelY, size, isSe
         fill={fillColor}
         stroke={strokeColor}
         strokeWidth={isSelected ? '2.5' : '1.2'}
+        style={{ cursor: 'pointer' }}
       />
       <text
         x={pixelX + size / 2}
@@ -46,8 +48,7 @@ const SeatItem = React.memo(function SeatItem({ seat, pixelX, pixelY, size, isSe
         fill="#ffffff"
         fontSize={fontSize}
         fontWeight="bold"
-        pointerEvents="none"
-        userSelect="none"
+        style={{ userSelect: 'none', cursor: 'pointer' }}
       >
         {symbol}
       </text>
@@ -127,7 +128,94 @@ export default function SeatMap() {
   // Ghế đang được bấm xem thông tin
   const [selectedSeat, setSelectedSeat] = useState(null);
 
-  // Tỷ lệ zoom hiện tại để hiển thị gợi ý kích thước ghế
+  // Trạng thái cho Payment Modal
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+  // Trạng thái giữ chỗ
+  const [isHolding, setIsHolding] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const [holdError, setHoldError] = useState(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setCurrentTime(now);
+
+      setSeatData(currentData => {
+        if (!currentData || !currentData.seats) return currentData;
+        let changed = false;
+        const newSeats = currentData.seats.map(s => {
+          if ((s.displayStatus === 'HeldByMe' || s.displayStatus === 'HeldByOther') && s.heldUntilUtc) {
+            const heldUntil = new Date(s.heldUntilUtc + (s.heldUntilUtc.endsWith('Z') ? '' : 'Z')).getTime();
+            if (heldUntil <= now) {
+              changed = true;
+              return { ...s, displayStatus: 'Available', heldUntilUtc: null };
+            }
+          }
+          return s;
+        });
+        return changed ? { ...currentData, seats: newSeats } : currentData;
+      });
+
+      setSelectedSeat(currentSeat => {
+        if (currentSeat && (currentSeat.displayStatus === 'HeldByMe' || currentSeat.displayStatus === 'HeldByOther') && currentSeat.heldUntilUtc) {
+          const heldUntil = new Date(currentSeat.heldUntilUtc + (currentSeat.heldUntilUtc.endsWith('Z') ? '' : 'Z')).getTime();
+          if (heldUntil <= now) {
+            return { ...currentSeat, displayStatus: 'Available', heldUntilUtc: null };
+          }
+        }
+        return currentSeat;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+
+
+  const handleConfirmHold = async () => {
+    if (!selectedSeat || selectedSeat.displayStatus !== 'Available') return;
+
+    setIsHolding(true);
+    setHoldError(null);
+
+    try {
+      // Call actual API
+      const response = await holdSeat(id, selectedSeat.id, 1);
+
+      const heldUntilUtc = response?.heldUntilUtc || new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+      setSeatData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          seats: prev.seats.map(s => s.id === selectedSeat.id ? { ...s, displayStatus: 'HeldByMe', heldUntilUtc } : s)
+        };
+      });
+      setSelectedSeat(prev => ({ ...prev, displayStatus: 'HeldByMe', heldUntilUtc }));
+    } catch (err) {
+      console.error('Lỗi giữ ghế:', err);
+      if (err.response?.status === 400 || err.response?.status === 409) {
+        setHoldError('Ghế này hiện không thể giữ (có thể đã bị người khác chọn).');
+        // AUTO-REFRESH ON CONFLICT: Instantly fetch updated seats to reflect reality
+        getShowtimeSeats(id).then(res => {
+          setSeatData(res);
+          if (res?.seats) {
+            const updatedSeat = res.seats.find(s => s.id === selectedSeat.id);
+            if (updatedSeat) {
+              setSelectedSeat(updatedSeat);
+            }
+          }
+        }).catch(console.error);
+      } else {
+        setHoldError('Có lỗi xảy ra khi giữ ghế. Vui lòng thử lại!');
+      }
+    } finally {
+      setIsHolding(false);
+    }
+  };
+
+
   const [zoomLevel, setZoomLevel] = useState(1);
 
   // Refs quản lý DOM và hiệu năng zoom/pan không render lại React
@@ -221,9 +309,9 @@ export default function SeatMap() {
       if (s.y < minY) minY = s.y;
       if (s.y > maxY) maxY = s.y;
 
-      if (s.status === 'Available') availableCount++;
-      else if (s.status === 'Held') heldCount++;
-      else if (s.status === 'Sold') soldCount++;
+      if (s.displayStatus === 'Available') availableCount++;
+      else if (s.displayStatus === 'HeldByMe' || s.displayStatus === 'HeldByOther') heldCount++;
+      else if (s.displayStatus === 'Sold') soldCount++;
     }
 
     const cols = maxX - minX + 1;
@@ -414,13 +502,17 @@ export default function SeatMap() {
 
   // Bấm trúng ghế (Event Delegation trên SVG)
   const handleTap = useCallback((e) => {
-    const target = e.target;
-    const seatElem = target.closest ? target.closest('[data-seat-id]') : null;
+    // Vì đang dùng setPointerCapture, e.target sẽ bị trỏ về container chứ không phải thẻ <g> của ghế.
+    // Nên ta dùng elementFromPoint để tìm chính xác phần tử tại vị trí chuột.
+    const elemUnderPointer = document.elementFromPoint(e.clientX, e.clientY);
+    const seatElem = elemUnderPointer ? elemUnderPointer.closest('[data-seat-id]') : null;
     if (seatElem && layout) {
-      const seatId = seatElem.getAttribute('data-seat-id');
+      const seatId = parseInt(seatElem.getAttribute('data-seat-id'), 10);
       const seat = layout.seatMapById.get(seatId);
       if (seat) {
-        setSelectedSeat(seat);
+        if (seat.displayStatus === 'Available' || seat.displayStatus === 'HeldByMe' || seat.displayStatus === 'HeldByOther') {
+          setSelectedSeat(seat);
+        }
         return;
       }
     }
@@ -441,7 +533,7 @@ export default function SeatMap() {
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     try {
-      e.currentTarget.setPointerCapture(e.pointerId);
+      // e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
       // Bỏ qua lỗi nếu không thể capture con trỏ
     }
@@ -559,7 +651,7 @@ export default function SeatMap() {
   // Xử lý Pointer Up (kết thúc thao tác)
   const handlePointerUp = (e) => {
     try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+      // e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
       // Bỏ qua lỗi nếu con trỏ đã được giải phóng
     }
@@ -582,7 +674,7 @@ export default function SeatMap() {
 
   const handlePointerCancel = (e) => {
     try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+      // e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
       // Bỏ qua lỗi nếu con trỏ đã được giải phóng
     }
@@ -737,6 +829,8 @@ export default function SeatMap() {
       </div>
     );
   }
+
+  console.log("Selected Seat Data:", selectedSeat);
 
   return (
     <div style={{ maxWidth: '1200px', margin: '20px auto', padding: '16px' }}>
@@ -1118,7 +1212,8 @@ export default function SeatMap() {
                   pixelY={seat.pixelY}
                   size={seat.size}
                   isSelected={selectedSeat?.id === seat.id}
-                />
+                    onClick={(s) => { setHoldError(null); setSelectedSeat(s); }}
+                  />
               ))}
             </g>
           </svg>
@@ -1166,7 +1261,7 @@ export default function SeatMap() {
             </div>
             <button
               type="button"
-              onClick={() => setSelectedSeat(null)}
+              onClick={() => { setHoldError(null); setSelectedSeat(null); }}
               aria-label="Đóng thông tin ghế"
               title="Đóng (hoặc bấm chỗ trống trên sơ đồ)"
               style={{
@@ -1230,22 +1325,117 @@ export default function SeatMap() {
             <div>
               <div style={{ fontSize: '12px', color: 'var(--text, #9ca3af)', marginBottom: '4px' }}>Trạng thái</div>
               <div>
-                {selectedSeat.status === 'Available' && (
+                {selectedSeat.displayStatus === 'Available' && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '4px', backgroundColor: '#14532d', color: '#86efac', fontSize: '13px', fontWeight: '600' }}>
                     ✓ Trống
                   </span>
                 )}
-                {selectedSeat.status === 'Held' && (
+                {(selectedSeat.displayStatus === 'HeldByMe' || selectedSeat.displayStatus === 'HeldByOther') && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '4px', backgroundColor: '#78350f', color: '#fde047', fontSize: '13px', fontWeight: '600' }}>
                     ⏳ Đang có người giữ
                   </span>
                 )}
-                {selectedSeat.status === 'Sold' && (
+                {selectedSeat.displayStatus === 'Sold' && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '4px', backgroundColor: '#374151', color: '#d1d5db', fontSize: '13px', fontWeight: '600' }}>
                     ✕ Đã bán
                   </span>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* Nút xác nhận đặt vé */}
+          <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+            {holdError && <div style={{ color: '#ef4444', fontSize: '13px' }}>{holdError}</div>}
+
+            {selectedSeat?.displayStatus === 'HeldByMe' && selectedSeat?.heldUntilUtc && (
+                <div style={{ color: '#fbbf24', fontWeight: 'bold', marginBottom: '10px' }}>
+                    Thời gian giữ ghế còn lại: {(() => {
+                        const expireTime = new Date(selectedSeat.heldUntilUtc + (selectedSeat.heldUntilUtc.endsWith('Z') ? '' : 'Z')).getTime();
+                        const remaining = Math.max(0, Math.floor((expireTime - currentTime) / 1000));
+                        const m = Math.floor(remaining / 60).toString().padStart(2, '0');
+                        const s = (remaining % 60).toString().padStart(2, '0');
+                        return `${m}:${s}`;
+                    })()}
+                </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {selectedSeat.displayStatus === 'Available' && (
+                <button
+                  disabled={isHolding}
+                  className={`font-bold py-2 px-6 rounded shadow-md transition duration-200 ${
+                    !isHolding
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed opacity-50'
+                  }`}
+                  onClick={handleConfirmHold}
+                >
+                  {isHolding ? 'Đang xử lý...' : 'Giữ ghế'}
+                </button>
+              )}
+
+              {(selectedSeat.displayStatus === 'Available' || selectedSeat.displayStatus === 'HeldByMe') && (
+                <button
+                  disabled={isHolding}
+                  className="font-bold py-2 px-6 rounded shadow-md transition duration-200 bg-green-600 hover:bg-green-700 text-white cursor-pointer"
+                  onClick={() => setIsPaymentModalOpen(true)}
+                >
+                  Xác nhận Đặt vé
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
+      {/* Modal thanh toán (Placeholder) */}
+      {isPaymentModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md border border-gray-700">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-white">Giao diện Thanh toán</h2>
+              <button
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="text-gray-400 hover:text-white transition duration-200"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="text-gray-300 mb-6">
+              <p>Ghế đã chọn: Khu {selectedSeat?.section} - Hàng {selectedSeat?.row} - Số {selectedSeat?.number}</p>
+              <p>Giá: {selectedSeat?.price ? `${selectedSeat.price.toLocaleString('vi-VN')} đ` : 'N/A'}</p>
+              <p className="mt-4 italic text-sm text-gray-500">Tính năng thanh toán đang được phát triển...</p>
+              {selectedSeat?.heldUntilUtc && (() => {
+                  const expireTime = new Date(selectedSeat.heldUntilUtc + (selectedSeat.heldUntilUtc.endsWith('Z') ? '' : 'Z')).getTime();
+                  const remaining = Math.max(0, Math.floor((expireTime - currentTime) / 1000));
+
+                  if (remaining > 0) {
+                      const m = Math.floor(remaining / 60).toString().padStart(2, '0');
+                      const s = (remaining % 60).toString().padStart(2, '0');
+                      return (
+                        <div className="mt-4 p-3 bg-yellow-900 bg-opacity-30 border border-yellow-700 rounded text-yellow-300 font-bold text-center">
+                          Vui lòng thanh toán trong vòng: {m}:{s}
+                        </div>
+                      );
+                  } else {
+                      return (
+                        <div className="mt-4 p-3 bg-red-900 bg-opacity-30 border border-red-700 rounded text-red-400 font-bold text-center">
+                          Hết thời gian giữ ghế. Vui lòng chọn lại!
+                        </div>
+                      );
+                  }
+              })()}
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded transition duration-200"
+              >
+                Đóng
+              </button>
             </div>
           </div>
         </div>

@@ -1,4 +1,5 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+using EventTicketing.Api.Email;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using EventTicketing.Api.Data;
@@ -7,7 +8,8 @@ using EventTicketing.Api.Entities;
 using EventTicketing.Api.Security;
 using EventTicketing.Api.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
+using EventTicketing.Api.Configuration;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using StackExchange.Redis;
@@ -27,53 +29,30 @@ builder.Services.AddOpenApi(options =>
     });
 });
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-                       ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
-
-if (!string.IsNullOrEmpty(connectionString))
-{
-    connectionString = connectionString.Replace("${DB_HOST}", Environment.GetEnvironmentVariable("DB_HOST"))
-                                       .Replace("${DB_PORT}", Environment.GetEnvironmentVariable("DB_PORT"))
-                                       .Replace("${DB_NAME}", Environment.GetEnvironmentVariable("DB_NAME"))
-                                       .Replace("${DB_USER}", Environment.GetEnvironmentVariable("DB_USER"))
-                                       .Replace("${DB_PASSWORD}", Environment.GetEnvironmentVariable("DB_PASSWORD"));
-}
-
-if (!builder.Environment.IsEnvironment("Testing"))
-{
-    builder.Services.AddDbContext<AppDbContext>(options =>
-    {
-        options.UseNpgsql(connectionString);
-        // Bá» qua cáº£nh bÃ¡o PendingModelChangesWarning Ä‘á»ƒ trÃ¡nh crash khi khá»Ÿi Ä‘á»™ng
-        options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
-    });
-}
-
-var redisConnection = builder.Configuration.GetSection("Redis")["ConnectionString"]
-                      ?? Environment.GetEnvironmentVariable("REDIS_CONNECTION");
-
-if (string.IsNullOrEmpty(redisConnection) || redisConnection == "${REDIS_CONNECTION}")
-{
-    redisConnection = "localhost:6379";
-}
-else
-{
-    var envRedis = Environment.GetEnvironmentVariable("REDIS_CONNECTION");
-    if (!string.IsNullOrEmpty(envRedis))
-    {
-        redisConnection = redisConnection.Replace("${REDIS_CONNECTION}", envRedis);
-    }
-}
-
-builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
-    ConnectionMultiplexer.Connect(redisConnection));
-
-builder.Services.AddHealthChecks();
+// Validate the effective configuration after JSON, environment and command-line overrides.
+var dependencies = DependencyConfiguration.Read(builder.Configuration, builder.Environment.EnvironmentName);
+builder.Services.AddSingleton(dependencies);
+builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(dependencies.Postgres));
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(dependencies.Redis));
+builder.Services.AddHealthChecks().AddCheck<DependencyHealthCheck>("dependencies", tags: ["ready"]);
+builder.Services.AddControllers().AddJsonOptions(options => { options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()); });
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ISeatingChartValidator, SeatingChartValidator>();
+builder.Services.AddScoped<EventTicketing.Api.SeatMaps.SeatMapImportService>();
+builder.Services.AddScoped<EventTicketing.Api.SeatMaps.SeatingChartPreparation>();
 builder.Services.AddScoped<ISeatReservationService, SeatReservationService>();
+builder.Services.AddScoped<RegistrationService>();
+builder.Services.AddActivationEmail(builder.Configuration, builder.Environment);
+// No background database writes by default in local development or tests.
+var localEnvironment = builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing");
+if (builder.Configuration.GetValue<bool?>("BackgroundJobs:SeatHoldCleanupEnabled") ?? !localEnvironment)
+    builder.Services.AddHostedService<EventTicketing.Api.BackgroundServices.ExpiredSeatHoldCleanupService>();
 
-var jwtKey = builder.Configuration["Jwt:Key"] ?? Environment.GetEnvironmentVariable("JWT_KEY") ?? "DayLaMotKhoaBaoMatDuDaiChoJwtToken123!";
+var jwtKey = builder.Configuration["Jwt:Key"] ?? builder.Configuration["JWT_KEY"];
+if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
+    throw new InvalidOperationException("Configure Jwt__Key or JWT_KEY with at least 32 bytes; no default signing key is provided.");
+builder.Services.AddSingleton<LoginAttemptLimiter>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, EventOwnerHandler>();
 builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -82,8 +61,20 @@ builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer
             ValidateIssuer = false,
             ValidateAudience = false,
             ValidateLifetime = true,
+            RequireExpirationTime = true,
+            ClockSkew = TimeSpan.Zero,
+            ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnTokenValidated = context =>
+            {
+                if (AccessPolicies.UserId(context.Principal!) == null)
+                    context.Fail("Invalid user identity.");
+                return Task.CompletedTask;
+            }
         };
     });
 
@@ -91,7 +82,12 @@ builder.Services.AddAuthorization(options =>
 {
     options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
+        .RequireAssertion(_ => false)
         .Build();
+    options.DefaultPolicy = options.FallbackPolicy;
+    options.AddPolicy(AccessPolicies.EventManagement, policy => policy.RequireAuthenticatedUser().RequireRole("Organizer", "Admin"));
+    options.AddPolicy(AccessPolicies.SeatBooking, policy => policy.RequireAuthenticatedUser().RequireRole("Buyer"));
+    options.AddPolicy(AccessPolicies.EventOwner, policy => policy.RequireAuthenticatedUser().AddRequirements(new EventOwnerRequirement()));
 });
 
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, CustomAuthorizationMiddlewareResultHandler>();
@@ -113,25 +109,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Automatically apply migrations at startup
-if (!app.Environment.IsEnvironment("Testing"))
-{
-    try
-    {
-        using var scope = app.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Database.Migrate();
-
-        if (app.Environment.IsDevelopment())
-        {
-            EventDbSeeder.Seed(db);
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Migration notice: {ex.Message}");
-    }
-}
+// Schema changes and data initialization are explicit operations, never startup side effects.
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
@@ -145,10 +123,12 @@ app.UseRouting();
 app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapHealthChecks("/health").AllowAnonymous();
+app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();
 app.MapSeatingChartEndpoints();
 app.MapSeatReservationEndpoints();
 app.MapPublicEventEndpoints();
+app.MapControllers();
 
 var summaries = new[]
 {
@@ -169,125 +149,45 @@ app.MapGet("/weatherforecast", () =>
 })
 .WithName("GetWeatherForecast");
 
-app.MapPost("/api/auth/register", async (
-    [Microsoft.AspNetCore.Mvc.FromBody] RegisterRequest request,
-    [Microsoft.AspNetCore.Mvc.FromServices] AppDbContext db) =>
-{
-    if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password) || string.IsNullOrWhiteSpace(request.Username))
-    {
-        return Results.Problem(statusCode: 400, title: "Validation Error", detail: "Email, username, and password are required");
-    }
 
-    var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
-    if (!emailRegex.IsMatch(request.Email))
-    {
-        return Results.Problem(statusCode: 400, title: "Validation Error", detail: "Invalid email format");
-    }
-
-    var emailLower = request.Email.Trim().ToLowerInvariant();
-    var usernameLower = request.Username.Trim().ToLowerInvariant();
-
-    var existingUser = await db.Users.SingleOrDefaultAsync(u => u.Email.ToLower() == emailLower || (u.Username != null && u.Username.ToLower() == emailLower) || (u.Username != null && u.Username.ToLower() == usernameLower));
-    if (existingUser != null)
-    {
-        if (existingUser.Email.ToLower() == emailLower)
-        {
-            return Results.Problem(statusCode: 409, title: "Conflict", detail: "Email already registered");
-        }
-        return Results.Problem(statusCode: 409, title: "Conflict", detail: "Username already registered");
-    }
-
-    var newUser = new User
-    {
-        Email = emailLower,
-        Username = request.Username.Trim(),
-        Name = string.IsNullOrWhiteSpace(request.FullName) ? "User" : request.FullName.Trim(),
-        PasswordHash = PasswordHasher.HashPassword(request.Password),
-        Status = "Active",
-        CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow
-    };
-    db.Users.Add(newUser);
-    try
-    {
-        await db.SaveChangesAsync();
-    }
-    catch (Microsoft.EntityFrameworkCore.DbUpdateException)
-    {
-        return Results.Problem(statusCode: 409, title: "Conflict", detail: "Email or username already registered");
-    }
-    var buyerRole = await db.Roles.SingleOrDefaultAsync(r => r.Name == "Buyer")
-                    ?? await db.Roles.SingleOrDefaultAsync(r => r.Id == 1);
-    if (buyerRole != null)
-    {
-        db.UserRoles.Add(new UserRole
-        {
-            UserId = newUser.Id,
-            RoleId = buyerRole.Id
-        });
-        await db.SaveChangesAsync();
-    }
-    return Results.Ok(new { message = "Registration successful" });
-})
-.WithName("Register")
-.AllowAnonymous();
+app.MapRegistrationEndpoints();
 
 app.MapPost("/api/auth/login", async (
     [Microsoft.AspNetCore.Mvc.FromBody] LoginRequest request,
     [Microsoft.AspNetCore.Mvc.FromServices] AppDbContext db,
-    [Microsoft.AspNetCore.Mvc.FromServices] IConnectionMultiplexer redis) =>
+    [Microsoft.AspNetCore.Mvc.FromServices] LoginAttemptLimiter limiter,
+    HttpContext httpContext) =>
 {
     if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password))
     {
         return Results.Json(new { message = "Invalid email or password" }, statusCode: 401);
     }
 
-    var redisDb = redis.GetDatabase();
     var emailLower = request.Email.Trim().ToLowerInvariant();
-    var lockKey = $"lockout:{emailLower}";
-    var attemptsKey = $"attempts:{emailLower}";
-
-    // Check lockout status
-    var lockTimeRemaining = await redisDb.KeyTimeToLiveAsync(lockKey);
-    if (lockTimeRemaining.HasValue && lockTimeRemaining.Value.TotalSeconds > 0)
-    {
-        return Results.Json(new { message = "Account locked for 15 minutes" }, statusCode: 403);
-    }
-
+    // Use the peer address, never an untrusted client-supplied IP/header.
+    var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
     var user = await db.Users
         .Include(u => u.UserRoles)
         .ThenInclude(ur => ur.Role)
         .SingleOrDefaultAsync(u => u.Email.ToLower() == emailLower || (u.Username != null && u.Username.ToLower() == emailLower));
 
-    if (user == null)
+    var accountKey = user?.Email.Trim().ToLowerInvariant() ?? emailLower;
+    var remaining = await limiter.RemainingSecondsAsync(accountKey, ip);
+    if (remaining > 0)
+        return Results.Json(new { message = "Account locked for 15 minutes", remainingSeconds = remaining }, statusCode: 403);
+
+    if (!PasswordHasher.VerifyPasswordOrDummy(user?.PasswordHash, request.Password) || user == null)
     {
+        await limiter.RecordFailureAsync(accountKey, ip);
         return Results.Json(new { message = "Invalid email or password" }, statusCode: 401);
     }
 
-    if (user.Status == "Inactive")
-    {
-        return Results.Json(new { error = new { code = "ACCOUNT_INACTIVE", message = "Account not activated" } }, statusCode: 403);
-    }
+    if (user.Status != "Active")
+        return Results.Json(new { error = new { code = "ACCOUNT_INACTIVE", message = "Account not activated or disabled" } }, statusCode: 403);
 
-    if (!PasswordHasher.VerifyPassword(user.PasswordHash, request.Password))
-    {
-        var attempts = await redisDb.StringIncrementAsync(attemptsKey);
-        if (attempts == 1)
-        {
-            await redisDb.KeyExpireAsync(attemptsKey, TimeSpan.FromMinutes(15));
-        }
-
-        if (attempts >= 5)
-        {
-            await redisDb.StringSetAsync(lockKey, "locked", TimeSpan.FromMinutes(15));
-            await redisDb.KeyDeleteAsync(attemptsKey);
-        }
-
-        return Results.Json(new { message = "Invalid email or password" }, statusCode: 401);
-    }
-
-    // On successful login, clear attempts
-    await redisDb.KeyDeleteAsync(attemptsKey);
+    remaining = await limiter.CompleteLoginAsync(accountKey, ip);
+    if (remaining > 0)
+        return Results.Json(new { message = "Account locked for 15 minutes", remainingSeconds = remaining }, statusCode: 403);
 
     var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
     var securityKey = new SymmetricSecurityKey(keyBytes);
@@ -303,11 +203,6 @@ app.MapPost("/api/auth/login", async (
         .Select(ur => ur.Role?.Name)
         .Where(name => !string.IsNullOrEmpty(name))
         .ToList();
-
-    if (userRoles.Count == 0)
-    {
-        userRoles.Add("Buyer");
-    }
 
     foreach (var roleName in userRoles)
     {
@@ -331,7 +226,6 @@ app.MapPost("/api/auth/login", async (
 })
 .WithName("Login")
 .AllowAnonymous();
-
 app.Run();
 
 public record RegisterRequest(string Email, string Username, string FullName, string Password);
@@ -344,7 +238,3 @@ record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 }
 
 public partial class Program { }
-
-
-
-
