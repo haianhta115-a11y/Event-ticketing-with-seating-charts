@@ -1,5 +1,6 @@
-﻿import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { validateRegistration } from '../auth/registration';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
 
 export default function Register() {
@@ -10,30 +11,21 @@ export default function Register() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
     setMessage('');
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return;
-    }
-
-    const emailRegex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-    if (!emailRegex.test(email)) {
-      setError('Invalid email format');
-      return;
-    }
+    const validation = validateRegistration({ email, password, username, fullName });
+    if (validation) { setError(validation); return; }
 
     setIsLoading(true);
 
     try {
-      await axiosClient.post('/auth/register', { email, username, fullName, password });
-      setMessage('Registration successful! Redirecting to login...');
-      setTimeout(() => navigate('/login'), 2000);
+      const response = await axiosClient.post('/auth/register', { email, username, fullName, password });
+      setMessage(response.data.message);
+      setPassword('');
     } catch (err) {
       if (err.response?.data?.errors) {
           const errorMessages = Object.values(err.response.data.errors).flat().join(', ');
@@ -89,7 +81,8 @@ export default function Register() {
         <div style={{ marginBottom: '15px' }}>
           <label style={{ display: 'block', marginBottom: '5px' }}>Password</label>
           <input 
-            type="password" 
+            type="password"
+            minLength={8}
             value={password} 
             onChange={(e) => setPassword(e.target.value)} 
             required 
@@ -102,6 +95,7 @@ export default function Register() {
       </form>
       <div style={{ textAlign: 'center' }}>
         <Link to="/login">Back to Login</Link>
+        <p><Link to="/activate">Gửi lại liên kết kích hoạt</Link></p>
       </div>
     </div>
   );

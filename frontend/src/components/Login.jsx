@@ -24,13 +24,13 @@ export default function Login() {
         
         const decoded = jwtDecode(token);
         const role = decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] || decoded.role || decoded.Role;
-        if (role) {
-          localStorage.setItem('role', role);
-        }
+        localStorage.removeItem('role');
+        if (role) localStorage.setItem('role', Array.isArray(role) ? role[0] : role);
+        localStorage.setItem('userId', String(response.data.userId));
         
         const params = new URLSearchParams(window.location.search);
         const returnUrl = params.get('returnUrl');
-        if (returnUrl) {
+        if (returnUrl?.startsWith('/') && !returnUrl.startsWith('//')) {
           navigate(returnUrl);
         } else {
           navigate('/');
@@ -39,7 +39,9 @@ export default function Login() {
         setError('Login failed: No token received.');
       }
     } catch (err) {
-      if (err.response?.data?.error?.code === 'ACCOUNT_INACTIVE') {
+      if (err.response?.data?.remainingSeconds) {
+        setError(`Đăng nhập tạm khóa. Thử lại sau ${err.response.data.remainingSeconds} giây.`);
+      } else if (err.response?.data?.error?.code === 'ACCOUNT_INACTIVE') {
         setError('Account not activated. Please check your email for the activation link.');
       } else {
         setError(err.response?.data?.message || 'Invalid email or password');
@@ -81,6 +83,7 @@ export default function Login() {
       <div style={{ textAlign: 'center' }}>
         <span>Don't have an account? </span>
         <Link to="/register" style={{ color: '#007bff', textDecoration: 'underline' }}>Register</Link>
+        <p><Link to="/activate">Gửi lại liên kết kích hoạt</Link></p>
       </div>
     </div>
   );

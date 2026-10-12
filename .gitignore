@@ -5,6 +5,9 @@
 
 # dotenv files
 .env
+.env.*
+!.env.example
+**/appsettings.Local.json
 
 # User-specific files
 *.rsuser
@@ -480,3 +483,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Development activation email mailbox (contains private links)
+**/.local-mail/

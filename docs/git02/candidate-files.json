@@ -1,0 +1,601 @@
+{
+  "base": "c2d1667dfac006ca3f4cb2eb9ce847477f3aef05",
+  "sourceHead": "e9c2a2d90133e5d0e4f1aed708c02aaf691d4a27",
+  "pathCount": 115,
+  "codeTestConfigPaths": 113,
+  "verificationMetadata": {
+    "batch": "GIT-03-FIX",
+    "correction": "Remove one empty line at EOF in EventsController.cs; no executable code change",
+    "approvedPathCount": 115,
+    "hashPolicy": "SHA-256 of working-tree bytes; staged blobs follow existing Git text normalization",
+    "verifiedDevelop": "c2d1667dfac006ca3f4cb2eb9ce847477f3aef05",
+    "backendTests": { "passed": 256, "failed": 0, "skipped": 0 },
+    "frontendTests": { "passed": 39, "failed": 0, "skipped": 0 },
+    "browserSmoke": { "passed": 12, "failed": 0, "skipped": 0 },
+    "environmentSafety": { "passed": 16, "failed": 0 },
+    "backendBuild": { "errors": 0, "warnings": 0 },
+    "frontendBuild": "passed",
+    "dotnetFormat": "passed",
+    "eslint": { "errors": 0, "warnings": 0 },
+    "npmAuditVulnerabilities": 0,
+    "stagedSecretReview": "Heuristic scan plus manual review; no new real credentials identified; historical rotation remains required",
+    "deployment": "CODE-ONLY: no shared database access, historical migrations or migration-history edits; SMTP/staging/legacy compatibility unresolved"
+  },
+  "selfHashNote": "Self entry has no recursive SHA; every copied file is SHA-256 sealed.",
+  "files": [
+    {
+      "file": ".gitignore",
+      "action": "copy",
+      "sha256": "d02737b85c8277a4ccb2b0f62e35ad129c7c9445d86986055e3892b702c192be"
+    },
+    {
+      "file": "EventTicketing.Api/BackgroundServices/ExpiredSeatHoldCleanupService.cs",
+      "action": "copy",
+      "sha256": "6d7760b74afae5589ec8944bec7c67f1f23c74bcc3dd33e35988db2d36b27f98"
+    },
+    {
+      "file": "EventTicketing.Api/Configuration/DependencyConfiguration.cs",
+      "action": "copy",
+      "sha256": "1438b5c58207b2220d71ee27d1fdd229ae16af278fb70d70cc1e29bc455d0edd"
+    },
+    {
+      "file": "EventTicketing.Api/Configuration/DependencyHealthCheck.cs",
+      "action": "copy",
+      "sha256": "a7a9f107d7221c24bdb2bc808e6a36d90e3857762caadcc1102af6e86b35fca5"
+    },
+    {
+      "file": "EventTicketing.Api/Controllers/EventsController.cs",
+      "action": "copy",
+      "sha256": "1732c32e1607f39e11ebd3db0ac3880b3b27b9376c9254ef314b7411bb4e5e40"
+    },
+    {
+      "file": "EventTicketing.Api/Controllers/ShowtimesController.cs",
+      "action": "copy",
+      "sha256": "3d4fe84854f44d0ddb98635b82d3cfcb11db84c7ed2cb84509b0d0d87b372a39"
+    },
+    {
+      "file": "EventTicketing.Api/Data/AppDbContext.cs",
+      "action": "copy",
+      "sha256": "5080deb4b24d40f86f7efccffccc178ec5de9d3ef01d085fc6b4dcc3c8c6f4e7"
+    },
+    {
+      "file": "EventTicketing.Api/Data/EventDbSeeder.cs",
+      "action": "copy",
+      "sha256": "3e585361b7202202db4527b3dcd4941f3450633ac952cb2aafab788a4377dfeb"
+    },
+    {
+      "file": "EventTicketing.Api/Data/LegacySeatData.cs",
+      "action": "copy",
+      "sha256": "7fa97deab3013f1adf85ce839480673e63ea81b9f488f75d63dbe906f800e578"
+    },
+    {
+      "file": "EventTicketing.Api/Email/EmailDelivery.cs",
+      "action": "copy",
+      "sha256": "19f33c0abf3ab3d186524f9d474b635161baaaa9a2a52a2b8896596024788259"
+    },
+    {
+      "file": "EventTicketing.Api/Email/EmailSetup.cs",
+      "action": "copy",
+      "sha256": "504f5a7eb321d029cb890cf1173189eaed1e3d7ad56c44a689ca916cac059fce"
+    },
+    {
+      "file": "EventTicketing.Api/Email/QueuedEmailDelivery.cs",
+      "action": "copy",
+      "sha256": "b7cc22163d482e4921fd66af4844da7255d78c63d0e3449f4e5ecb1e491ef7c8"
+    },
+    {
+      "file": "EventTicketing.Api/Endpoints/PublicEventEndpoints.cs",
+      "action": "copy",
+      "sha256": "1e197f41862d863665daae59516da7e1fb484c00ce73ed88092a0dba98772031"
+    },
+    {
+      "file": "EventTicketing.Api/Endpoints/RegistrationEndpoints.cs",
+      "action": "copy",
+      "sha256": "aade8f3fd124d3a5efd63a2c387451a21f5a77e20fe9fcce17fb7afbd25ddba8"
+    },
+    {
+      "file": "EventTicketing.Api/Endpoints/SeatReservationEndpoints.cs",
+      "action": "copy",
+      "sha256": "00b09ff1fbd2dfbc6f8f8cfffb181f7eecd3fcafe7f6683fab7a93aa49c5700e"
+    },
+    {
+      "file": "EventTicketing.Api/Endpoints/SeatingChartEndpoints.cs",
+      "action": "copy",
+      "sha256": "74ec1fa394fbb1a266ebf8d83599c38063b3837a9b01283c4ab5d4af5779f7bc"
+    },
+    {
+      "file": "EventTicketing.Api/Entities/AccountActivation.cs",
+      "action": "copy",
+      "sha256": "0ac17d4fcb400908cae874463f53288adec2cb35199aedccb8310834677cda41"
+    },
+    {
+      "file": "EventTicketing.Api/Entities/Performance.cs",
+      "action": "delete"
+    },
+    {
+      "file": "EventTicketing.Api/Entities/Seat.cs",
+      "action": "copy",
+      "sha256": "a6216e0909aab7b2ca51884b0c5f067705c79f480552539250ff805a3d30bfaf"
+    },
+    {
+      "file": "EventTicketing.Api/Entities/SeatCategory.cs",
+      "action": "copy",
+      "sha256": "aeafa97a11b8f8caab55cbb73c8a701b56fd938022675260cb9c2ce960101142"
+    },
+    {
+      "file": "EventTicketing.Api/Migrations/20261006074346_FixArchitecture_LinkSeatsToShowtime.Designer.cs",
+      "action": "copy",
+      "sha256": "97d23e636f40a1e6f3d9517fb9ead5fa90b3f99e35cebb022cab6dea8a3bf437"
+    },
+    {
+      "file": "EventTicketing.Api/Migrations/20261006074346_FixArchitecture_LinkSeatsToShowtime.cs",
+      "action": "copy",
+      "sha256": "27c76ab878b7df300230a89dadac5b859e5c800c5f5529618a932eabeb837f79"
+    },
+    {
+      "file": "EventTicketing.Api/Migrations/20261006124315_AddSeatCoordinates.Designer.cs",
+      "action": "copy",
+      "sha256": "eeefdc4664f8fdfb8940316b089e5ae86f73701bdb30a4829588d23fb89b5b69"
+    },
+    {
+      "file": "EventTicketing.Api/Migrations/20261006124315_AddSeatCoordinates.cs",
+      "action": "copy",
+      "sha256": "b83b7a328ba7e03a302167082465777bf006f8d763be1ce4d840a8bb3192c86b"
+    },
+    {
+      "file": "EventTicketing.Api/Migrations/20261010094757_AddAccountActivations.Designer.cs",
+      "action": "copy",
+      "sha256": "4d3455b04229c5c3bb90d8d17b2d11c296ffaf121a9bd136eff8e86e9700ff14"
+    },
+    {
+      "file": "EventTicketing.Api/Migrations/20261010094757_AddAccountActivations.cs",
+      "action": "copy",
+      "sha256": "5f5aff94e1bae1bdd38e13bd2e23bae82d74b26bc75b002aa0d1a6bf65f2ce5c"
+    },
+    {
+      "file": "EventTicketing.Api/Migrations/20261010105536_AddEventOwnerForeignKey.Designer.cs",
+      "action": "copy",
+      "sha256": "9c5b3b2537b0661e3e5eb8e8ae84a33230b4b6ace9aa7983f66f565883e137b2"
+    },
+    {
+      "file": "EventTicketing.Api/Migrations/20261010105536_AddEventOwnerForeignKey.cs",
+      "action": "copy",
+      "sha256": "d5b70a3cf71bc0c4a02cac18137b9471a9dd415dab38216814475a4aeb8a654e"
+    },
+    {
+      "file": "EventTicketing.Api/Migrations/AppDbContextModelSnapshot.cs",
+      "action": "copy",
+      "sha256": "699fc38f4993739cb4dbc283e4ce0422bb0ac25150c46d0efb40a0db4c60e421"
+    },
+    {
+      "file": "EventTicketing.Api/Models/SeatingChart/SeatDto.cs",
+      "action": "copy",
+      "sha256": "9f1d02c8e6eb00d86f17673aeea5fe0925d13e3e9fff28700a724a076df1c977"
+    },
+    {
+      "file": "EventTicketing.Api/Program.cs",
+      "action": "copy",
+      "sha256": "007ec222f02ced038dbef7e91d13526bac4cabc3408c5abfe8b0a9398714c03f"
+    },
+    {
+      "file": "EventTicketing.Api/SeatMaps/SeatMapDocumentAdapter.cs",
+      "action": "copy",
+      "sha256": "d8aa7e1d34270dcc8d0a0f785e8d37fccd25af5d3510682acf15b4fa839592c8"
+    },
+    {
+      "file": "EventTicketing.Api/SeatMaps/SeatMapImportDocument.cs",
+      "action": "copy",
+      "sha256": "e563a7e1a08f0228a7b353b4929ef45ae5cd1f6e5585fdfbec7cec718eda394d"
+    },
+    {
+      "file": "EventTicketing.Api/SeatMaps/SeatMapImportExceptions.cs",
+      "action": "copy",
+      "sha256": "b55a9e4c90899b845b3ac4ace886e84df27ec6a6cf1061d9812cf8912306c313"
+    },
+    {
+      "file": "EventTicketing.Api/SeatMaps/SeatMapImportService.cs",
+      "action": "copy",
+      "sha256": "0e320e51ad7ab7f15afdf0ac922926f502043525cbda6f9b8254a95c36e01347"
+    },
+    {
+      "file": "EventTicketing.Api/SeatMaps/SeatSchemaCompatibility.cs",
+      "action": "copy",
+      "sha256": "d3e40a41beed2e1cd8a68b867e33e9a593be28b55d353c106cb6f822b6b6f745"
+    },
+    {
+      "file": "EventTicketing.Api/SeatMaps/SeatingChartPreparation.cs",
+      "action": "copy",
+      "sha256": "93c511ebbf89030b8efef2a8803f73a68f51979b41308b3d064e8aa95ad04945"
+    },
+    {
+      "file": "EventTicketing.Api/Security/AccessPolicies.cs",
+      "action": "copy",
+      "sha256": "2f0ea94a9d5572efec547c5c07b509da8a37e25d7f04ba340096e84d4ff25a23"
+    },
+    {
+      "file": "EventTicketing.Api/Security/CustomAuthorizationMiddlewareResultHandler.cs",
+      "action": "copy",
+      "sha256": "676790703cefb6e071a1761f9cef4c48fab8c3949ead44b4150d631e5fe4695b"
+    },
+    {
+      "file": "EventTicketing.Api/Security/LoginAttemptLimiter.cs",
+      "action": "copy",
+      "sha256": "b26d518f95a765490cb72f6c49acec36fcf63a1426b492aba16b6832400450f5"
+    },
+    {
+      "file": "EventTicketing.Api/Security/PasswordHasher.cs",
+      "action": "copy",
+      "sha256": "036454c98b1ec1065b0f83b9acca0a6b0a707c4751ce9a25258419ec49eb4f87"
+    },
+    {
+      "file": "EventTicketing.Api/Services/ISeatReservationService.cs",
+      "action": "copy",
+      "sha256": "8e99ea9da96a0f56828fe48756ac7b83e0a5759a52dae2f15626f8f76f15fd85"
+    },
+    {
+      "file": "EventTicketing.Api/Services/RegistrationService.cs",
+      "action": "copy",
+      "sha256": "d9cb6a1c44944d230a958605cf694486025ebd6881990b689adf49ddf3de2443"
+    },
+    {
+      "file": "EventTicketing.Api/Services/SeatReservationService.cs",
+      "action": "copy",
+      "sha256": "d121ab6c164ac9a54080efa649b9e76a01223d3e18e61dffdbe6828fe96754eb"
+    },
+    {
+      "file": "EventTicketing.Api/appsettings.Development.json",
+      "action": "copy",
+      "sha256": "d7717c8d88a2a221eda518dcebf3b6fa096c55105ee28e7c0791c2bf5f2385ae"
+    },
+    {
+      "file": "EventTicketing.Api/appsettings.Testing.json",
+      "action": "copy",
+      "sha256": "d7d2fd8ff9786e42a8a2a7de724a37062bf27bd68133819a26d3a0bb8bc7abe0"
+    },
+    {
+      "file": "EventTicketing.Api/appsettings.json",
+      "action": "copy",
+      "sha256": "5989849aee76d67057e1b1b1922a5bdc46297d4ee34cac31597518eb3f975e5c"
+    },
+    {
+      "file": "EventTicketing.Tests/ActivationMigrationTests.cs",
+      "action": "copy",
+      "sha256": "63c85a67a9cfd017620b47dc8a0ef1ab906ab208d5453d3bfd81e26f954b0600"
+    },
+    {
+      "file": "EventTicketing.Tests/AuthEndpointTests.cs",
+      "action": "copy",
+      "sha256": "bce9b6e97ebdff63ba263812c7986d58fe5fb40f1e10e0d5fd23ad6acdce72b7"
+    },
+    {
+      "file": "EventTicketing.Tests/AuthorizationEndpointTests.cs",
+      "action": "copy",
+      "sha256": "6ab33ddf7822f684873d80cf83e07175faba6a7b7eebe1f723a6607d120d7ce0"
+    },
+    {
+      "file": "EventTicketing.Tests/EmailDeliveryTests.cs",
+      "action": "copy",
+      "sha256": "fb40879c8cf35498fc98b634ab5f3d1d1eae60240b8ef590a2c8ba408ce5c519"
+    },
+    {
+      "file": "EventTicketing.Tests/EventManagementTests.cs",
+      "action": "copy",
+      "sha256": "42b09e335677023dccf4d8a4d456708e12f5bd287ef4d1393074f34f158d7517"
+    },
+    {
+      "file": "EventTicketing.Tests/EventOwnerMigrationTests.cs",
+      "action": "copy",
+      "sha256": "4b6c64097f2607131e3f5532bcebe9fafa0abeb9a7fc413fc124d25edf45a372"
+    },
+    {
+      "file": "EventTicketing.Tests/HotfixEventVisibilityTests.cs",
+      "action": "copy",
+      "sha256": "9085c660d8eb1c75afaa819bba0e0a2d215fa36877c4840aed22dd5642817e6f"
+    },
+    {
+      "file": "EventTicketing.Tests/Infrastructure/ActivationInsertFailure.cs",
+      "action": "copy",
+      "sha256": "e4aa756264e1c2f87a96d7fb6c22ca0d4d0b50c9cd6e1b88ae2758ebd524101e"
+    },
+    {
+      "file": "EventTicketing.Tests/Infrastructure/CapturedLogs.cs",
+      "action": "copy",
+      "sha256": "61dcabc68b95cc33baf0a7e20cfbb5624a74561c6798bda94529ab74d78b2a8c"
+    },
+    {
+      "file": "EventTicketing.Tests/Infrastructure/ConcurrentSeatReadBarrier.cs",
+      "action": "copy",
+      "sha256": "5e24d6be84cea89dd86f81937827e9e0754ee2a1b6ba2ec7cb054d7174f21e47"
+    },
+    {
+      "file": "EventTicketing.Tests/Infrastructure/FakeEmailDelivery.cs",
+      "action": "copy",
+      "sha256": "d910e4db92e71ba9e61c60136affe2e643961c5c889b2edd3c605780bce8fa1a"
+    },
+    {
+      "file": "EventTicketing.Tests/Infrastructure/LocalApplicationFactory.cs",
+      "action": "copy",
+      "sha256": "61664fe32409ddadf7aeb51188cde25b1d222e9bf98cbcbd30a870421bd7850d"
+    },
+    {
+      "file": "EventTicketing.Tests/Infrastructure/LocalPostgresDatabase.cs",
+      "action": "copy",
+      "sha256": "a57127aa43b7c0fc4d83a8ef662926062b36fb54cbd6e8daedd49059630c8d33"
+    },
+    {
+      "file": "EventTicketing.Tests/LegacySeatCompatibilityTests.cs",
+      "action": "copy",
+      "sha256": "479cc677ab79689e2ed9f134103bcb8d9abf95413c4fac8817e3917d6ebba41b"
+    },
+    {
+      "file": "EventTicketing.Tests/README.md",
+      "action": "copy",
+      "sha256": "b7d923cf6660580bcc12b16cef083c03736fb039435db9fad548a698e67e3b72"
+    },
+    {
+      "file": "EventTicketing.Tests/RegistrationActivationTests.cs",
+      "action": "copy",
+      "sha256": "99e4060727f786f0f19a1276034744761817c96507dcdad9478c1c0d8f305605"
+    },
+    {
+      "file": "EventTicketing.Tests/ReservationAtomicityTests.cs",
+      "action": "copy",
+      "sha256": "db0c4ae5dbc1bcb73696c23f735d11187fcf1f44e4ee84a289e1320456f96544"
+    },
+    {
+      "file": "EventTicketing.Tests/SeatMapImportServiceTests.cs",
+      "action": "copy",
+      "sha256": "4ad3e0b77dc1539915285f6f85aed4947380fe119601ab93f88b3c386a7712d1"
+    },
+    {
+      "file": "EventTicketing.Tests/SeatReservationEndpointTests.cs",
+      "action": "copy",
+      "sha256": "b27a290e1640e765a6f477803f71404d0c43e6b0377f6e42e9cc213ffa3b7cd1"
+    },
+    {
+      "file": "EventTicketing.Tests/SeatReservationServiceTests.cs",
+      "action": "copy",
+      "sha256": "5ed55308f69e3f51a03dc09a40e1368a7f5ee32234560b89ad8182d82357da59"
+    },
+    {
+      "file": "EventTicketing.Tests/SeatingChartEndpointTests.cs",
+      "action": "copy",
+      "sha256": "1739c1ef89154e8c8afc6a65edb9cb5617eec05f75ccbb730d40f38c2d5335da"
+    },
+    {
+      "file": "EventTicketing.Tests/SeatingChartImportTests.cs",
+      "action": "copy",
+      "sha256": "de75e2f1f217531d9a5130c1bdf7b0d3f4a1c4c15cba28c2dd46a2304d9a5b19"
+    },
+    {
+      "file": "EventTicketing.Tests/SeatingChartPreparationTests.cs",
+      "action": "copy",
+      "sha256": "8ce41950858dbf5af4d15feb5ced1d5087f6ddd50afaf673a8783f0ef3d405c7"
+    },
+    {
+      "file": "EventTicketing.Tests/SeatingChartPreviewTests.cs",
+      "action": "copy",
+      "sha256": "7f2a7c209f6f521cd23a8addd49481cee14c1efdd3482af7e92016e95077d969"
+    },
+    {
+      "file": "EventTicketing.Tests/SeatingChartValidatorTests.cs",
+      "action": "copy",
+      "sha256": "7c587b50e82f7abd32eff54a2e8c6c05d925b05ae84d42b00ce404d1484e59c7"
+    },
+    {
+      "file": "README.md",
+      "action": "copy",
+      "sha256": "bc0da0b562264ba1ef28bd5f77b65c2b554f735f4864a625d4448aa637ffe658"
+    },
+    {
+      "file": "docker-compose.staging.yml",
+      "action": "copy",
+      "sha256": "4ed01dd777567ad7dad50b8d5cb6d794fa5824dead0e07551dcd505d3285aa7c"
+    },
+    {
+      "file": "docker-compose.yml",
+      "action": "copy",
+      "sha256": "2939afbd9b04d37e778a4f779b6b85cde6392fc00fe62fd71f85f86ab34790a0"
+    },
+    {
+      "file": "docs/INCREMENTAL-DELIVERY-01.md",
+      "action": "copy",
+      "sha256": "27c9093f8a885cf1f2fe909b71a7c1101c7ba61048b6d37727ab72afccfb0bb9"
+    },
+    {
+      "file": "docs/git02/candidate-files.json",
+      "action": "manifest",
+      "sha256": null
+    },
+    {
+      "file": "frontend/package-lock.json",
+      "action": "copy",
+      "sha256": "78df12b27869b0ff29bb9fa2bf65b72ab893226efbe94c7f640ab9c42b4c488a"
+    },
+    {
+      "file": "frontend/src/App.jsx",
+      "action": "copy",
+      "sha256": "879124cc0b06669920fc0c64ed0e1544412ab8c6160e809e1ca527ab42d87151"
+    },
+    {
+      "file": "frontend/src/api/axiosClient.js",
+      "action": "copy",
+      "sha256": "616c319bc8e0f7ab33bab76a374d5cc979c6dbf2a8b4efa16d36674adb3b93fd"
+    },
+    {
+      "file": "frontend/src/api/eventsApi.js",
+      "action": "copy",
+      "sha256": "f608499f5ccbc587d84ebfbe8b19e5dab3d7a5144b845fcaf550bd74ccd66669"
+    },
+    {
+      "file": "frontend/src/api/seatReservationApi.js",
+      "action": "copy",
+      "sha256": "f3b6d034c6e5863e98abf0b1e93a4e2672ea0bb477fc1dbae18d8fdad325d9f4"
+    },
+    {
+      "file": "frontend/src/api/seatsApi.js",
+      "action": "copy",
+      "sha256": "f6b6d03a3f24672357a9b38e5ee7d4c228e47ccfb252a7cbec4d631039b28860"
+    },
+    {
+      "file": "frontend/src/auth/registration.js",
+      "action": "copy",
+      "sha256": "d177e907046c20d5666d45f727a1f3de87f7ac707d8d986830c756c15ce166db"
+    },
+    {
+      "file": "frontend/src/auth/session.js",
+      "action": "copy",
+      "sha256": "d561c71564dbfd1a541d3f3f76531acc60ba31e8475ceaf3a06677da48e6f4b5"
+    },
+    {
+      "file": "frontend/src/components/Activate.jsx",
+      "action": "copy",
+      "sha256": "c3ece67b435cb15362204038e9f257ceed5870df87c770e068412fcac63d4ab9"
+    },
+    {
+      "file": "frontend/src/components/CreateEvent.jsx",
+      "action": "copy",
+      "sha256": "1f99ce5b4dc7d5938237ae944eb116085005eef71d10c13615fbf137ccff9176"
+    },
+    {
+      "file": "frontend/src/components/EventDetail.jsx",
+      "action": "copy",
+      "sha256": "8d9925b3c16da4054bbd84675c91c3042c6a4cf08866d8e598e13e37bdc20333"
+    },
+    {
+      "file": "frontend/src/components/EventList.jsx",
+      "action": "copy",
+      "sha256": "e3a960d693d04f8b5096fdc189e8479816aceb5db545e0b34b932ddcbaa5edab"
+    },
+    {
+      "file": "frontend/src/components/Login.jsx",
+      "action": "copy",
+      "sha256": "1c3d622b8ee659a1a4c0ec583ac0e5f7d19f2da7354ef1ea70f4797e76d25266"
+    },
+    {
+      "file": "frontend/src/components/Register.jsx",
+      "action": "copy",
+      "sha256": "7a1125a189f31b9a30896085940940d2a92dd5146f4aec2fcb37cf0ea187db18"
+    },
+    {
+      "file": "frontend/src/components/RequireRole.jsx",
+      "action": "copy",
+      "sha256": "8319b1a3fc8881821f454dc29426cd65495d60ff689eec98deb8dd4878e7ca1a"
+    },
+    {
+      "file": "frontend/src/components/RequireRoleRoute.jsx",
+      "action": "copy",
+      "sha256": "9ab4bae50b826f6931bedea4eb3808a3d0ec88a79ed9f3d5d57aee65599a3c07"
+    },
+    {
+      "file": "frontend/src/components/SeatReservation.jsx",
+      "action": "copy",
+      "sha256": "bb7e0da978d29b68fc822306fd15e62954547226cd683e7ce3e15a532026aa1c"
+    },
+    {
+      "file": "frontend/src/components/SeatingChartPreview.jsx",
+      "action": "copy",
+      "sha256": "644de3c8279993abdc3793fd610266a99317182e5a49b85c89dc455c44fd9e82"
+    },
+    {
+      "file": "frontend/src/components/ShowtimeForm.jsx",
+      "action": "copy",
+      "sha256": "43a8c84fb38ce2d53943d0841180017ddb518d514975834d7f300412d08725b7"
+    },
+    {
+      "file": "frontend/src/constants/eventStatus.js",
+      "action": "copy",
+      "sha256": "e93c6f0b17b9c0527934779575d8e2c87b5a8a087ff3a54155759d56532c74cd"
+    },
+    {
+      "file": "frontend/src/events/holdCountdown.js",
+      "action": "copy",
+      "sha256": "3e717e97b585ddd136e775d9007d6cb92c47ab8e4a8439dba9959960cb931899"
+    },
+    {
+      "file": "frontend/src/events/management.js",
+      "action": "copy",
+      "sha256": "c0c06844b814d764abd02c10c93231255a4a8f5f0127261aab9a6bf72bb44e81"
+    },
+    {
+      "file": "frontend/src/events/publicEvents.js",
+      "action": "copy",
+      "sha256": "09eec64cf520ea49b6f4088fe1b9eb2f94b946e14aa8a70cf854c436f075632c"
+    },
+    {
+      "file": "frontend/src/events/seatImport.js",
+      "action": "copy",
+      "sha256": "133a3c94bd4ec3fbabcd694d5f249260e32e3173183d49e62223eb91e06084a8"
+    },
+    {
+      "file": "frontend/src/pages/Home.jsx",
+      "action": "copy",
+      "sha256": "7fd228a4134bcac52022e5f8da627792737f2d01bc1cf6ea8ca57f4b05b3527c"
+    },
+    {
+      "file": "frontend/src/pages/SeatMap.jsx",
+      "action": "copy",
+      "sha256": "f174955f6732f024da5802dc16a90297823670e049f789ecc31e56e3ce42aeff"
+    },
+    {
+      "file": "frontend/src/router.jsx",
+      "action": "copy",
+      "sha256": "a2186e5988dedbeb641adb36111c2a30277df286cd1955901cf127370d316345"
+    },
+    {
+      "file": "frontend/tests/auth.test.mjs",
+      "action": "copy",
+      "sha256": "d476cb04e3b574db7142a36af109a1e478a369e71bcfbf45a40d41ae830edaa0"
+    },
+    {
+      "file": "frontend/tests/events.test.mjs",
+      "action": "copy",
+      "sha256": "0b71b2f715d02519ed421405b63720b10ead0487389a5db6a87f6c91b0c3bd8d"
+    },
+    {
+      "file": "frontend/tests/holdCountdown.test.mjs",
+      "action": "copy",
+      "sha256": "89b689f02433e7f25f7b9ce16de60ec8f5a648277b3bab8c2d97a9bd9f15c7bc"
+    },
+    {
+      "file": "frontend/tests/publicEvents.test.mjs",
+      "action": "copy",
+      "sha256": "51b0f97b90e9e78fa98ec13719765fcc14e3cef71ec87ede5b88cb73de9da457"
+    },
+    {
+      "file": "frontend/tests/registration.test.mjs",
+      "action": "copy",
+      "sha256": "32a07093cbbb97a9d3099d2e3ca5c9ad08a7ead5c9f6100118314f4bd2affb21"
+    },
+    {
+      "file": "frontend/tests/seatImport.test.mjs",
+      "action": "copy",
+      "sha256": "53041681f2715a39264e474afcb897b1b6cc5382bc1c83953dc6d1a098539f2b"
+    },
+    {
+      "file": "frontend/tests/seatPreview.test.mjs",
+      "action": "copy",
+      "sha256": "342dbc2cda83649dee501cd080b770d7f2f6800b3ad814a793aa836934da9e60"
+    },
+    {
+      "file": "frontend/tests/uploadTransport.test.mjs",
+      "action": "copy",
+      "sha256": "0e9b9dd2b09e86b7fea3f2b9f13790815125bb21f9a0ae615c98393b809ded99"
+    },
+    {
+      "file": "tests/EnvironmentSafetyChecks/EnvironmentSafetyChecks.csproj",
+      "action": "copy",
+      "sha256": "2a7126c5576de294653ccf0e030e5ff213c8b625ea1c718777f830e96b0352fb"
+    },
+    {
+      "file": "tests/EnvironmentSafetyChecks/Program.cs",
+      "action": "copy",
+      "sha256": "06d65713bb60c1512c4764700288feb5e9a29b65e70b1e102bfd98f5d0eb5985"
+    },
+    {
+      "file": "tests/run-local-tests.ps1",
+      "action": "copy",
+      "sha256": "07e0efe934168b48f3e8ee7b8d47afa4ff2c001dad6b82de829340133ab9a31c"
+    }
+  ]
+}

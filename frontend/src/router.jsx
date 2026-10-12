@@ -58,6 +58,10 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'events/:id/edit',
+        element: <RequireRoleRoute allowedRoles={['Admin', 'Organizer']}><CreateEvent /></RequireRoleRoute>,
+      },
+      {
         path: 'events/:id',
         element: (
           <RequireRoleRoute allowedRoles={['Admin', 'Organizer']}>

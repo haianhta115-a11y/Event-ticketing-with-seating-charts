@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getEvents } from '../api/eventsApi';
+import { apiMessage } from '../events/management';
 import { getEventStatusInfo } from '../constants/eventStatus';
 
 export default function EventList() {
@@ -17,7 +18,7 @@ export default function EventList() {
       })
       .catch((err) => {
         console.error('Error fetching events:', err);
-        setError(err?.message || 'Có lỗi xảy ra khi tải danh sách sự kiện.');
+        setError(apiMessage(err));
       })
       .finally(() => {
         setLoading(false);
@@ -36,7 +37,7 @@ export default function EventList() {
       .catch((err) => {
         console.error('Error fetching events:', err);
         if (!ignore) {
-          setError(err?.message || 'Có lỗi xảy ra khi tải danh sách sự kiện.');
+          setError(apiMessage(err));
         }
       })
       .finally(() => {
@@ -257,7 +258,7 @@ export default function EventList() {
                           border: '1px solid var(--border, #2e303a)',
                         }}
                       >
-                        {evt.showCount} suất
+                        {evt.showCount ?? evt.showtimeCount ?? evt.showtimes?.length ?? 0} suất
                       </span>
                     </div>
                   </div>

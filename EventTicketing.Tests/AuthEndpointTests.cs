@@ -4,52 +4,23 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Moq;
-using StackExchange.Redis;
+using EventTicketing.Tests.Infrastructure;
 using EventTicketing.Api.Data;
 using Xunit;
 
 namespace EventTicketing.Tests;
 
+[Trait("Category", "Integration")]
 public class AuthEndpointTests
 {
-    private WebApplicationFactory<Program> CreateTestFactory()
-    {
-        var mockRedis = new Mock<IConnectionMultiplexer>();
-        mockRedis.Setup(r => r.IsConnected).Returns(true);
-
-        var dbName = $"TestDb_{Guid.NewGuid()}";
-        return new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseEnvironment("Testing");
-                builder.ConfigureServices(services =>
-                {
-                    var dbDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<AppDbContext>));
-                    if (dbDescriptor != null)
-                    {
-                        services.Remove(dbDescriptor);
-                    }
-                    services.AddDbContext<AppDbContext>(options =>
-                    {
-                        options.UseInMemoryDatabase(dbName);
-                    });
-
-                    var redisDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IConnectionMultiplexer));
-                    if (redisDescriptor != null)
-                    {
-                        services.Remove(redisDescriptor);
-                    }
-                    services.AddSingleton<IConnectionMultiplexer>(mockRedis.Object);
-                });
-            });
-    }
-
     [Fact]
     public async Task Register_ValidGmail_ReturnsOk()
     {
         // Arrange
-        using var factory = CreateTestFactory();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        database.Context.Roles.Add(new EventTicketing.Api.Entities.Role { Id = 1, Name = "Buyer" });
+        await database.Context.SaveChangesAsync();
+        await using var factory = new LocalApplicationFactory(database);
         var client = factory.CreateClient();
         var request = new
         {
@@ -67,10 +38,13 @@ public class AuthEndpointTests
     }
 
     [Fact]
-    public async Task Register_DuplicateEmail_ReturnsConflict()
+    public async Task Register_DuplicateEmail_ReturnsSameGenericResponse_WithoutDuplicateUser()
     {
         // Arrange
-        using var factory = CreateTestFactory();
+        await using var database = await LocalPostgresDatabase.CreateAsync();
+        database.Context.Roles.Add(new EventTicketing.Api.Entities.Role { Id = 1, Name = "Buyer" });
+        await database.Context.SaveChangesAsync();
+        await using var factory = new LocalApplicationFactory(database);
         var client = factory.CreateClient();
         var request1 = new
         {
@@ -95,6 +69,12 @@ public class AuthEndpointTests
         var content = await response.Content.ReadAsStringAsync();
 
         // Assert
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(await response1.Content.ReadAsStringAsync(), content);
+        await using var read = database.CreateContext();
+        Assert.Equal(1, await read.Users.CountAsync(u => u.Email == "duplicate@gmail.com"));
+        var user = await read.Users.SingleAsync(u => u.Email == "duplicate@gmail.com");
+        Assert.Equal("Inactive", user.Status);
+        Assert.Equal(1, await read.AccountActivations.CountAsync(a => a.UserId == user.Id));
     }
 }
