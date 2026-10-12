@@ -39,8 +39,6 @@ public sealed record SeatDisplayDto(
     int SeatCategoryId,
     string Row,
     string Number,
-    int? X,
-    int? Y,
     string DisplayStatus,
     DateTime? HeldUntilUtc,
     bool CanSelect);
@@ -100,12 +98,6 @@ public sealed class HoldSeatResult
 
 public interface ISeatReservationService
 {
-    Task<HoldSeatResult> HoldSeatsAsync(
-        int showtimeId,
-        IReadOnlyCollection<int> seatIds,
-        int userId,
-        CancellationToken cancellationToken = default);
-
     Task<HoldSeatResult> HoldSeatAsync(
         int performanceId,
         int seatId,

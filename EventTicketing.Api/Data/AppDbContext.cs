@@ -12,25 +12,15 @@ public class AppDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<Role> Roles { get; set; }
     public DbSet<UserRole> UserRoles { get; set; }
-    public DbSet<AccountActivation> AccountActivations { get; set; }
     public DbSet<Seat> Seats { get; set; }
     public DbSet<SeatCategory> SeatCategories { get; set; }
-
+    public DbSet<Performance> Performances { get; set; }
     public DbSet<Event> Events { get; set; }
     public DbSet<Showtime> Showtimes { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-
-        modelBuilder.Entity<AccountActivation>(entity =>
-        {
-            entity.ToTable("account_activations");
-            entity.HasIndex(a => a.TokenHash).IsUnique();
-            entity.Property(a => a.TokenHash).HasMaxLength(64);
-            entity.HasIndex(a => a.UserId).IsUnique();
-            entity.HasOne(a => a.User).WithMany().HasForeignKey(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
-        });
 
         modelBuilder.Entity<User>(entity =>
         {
@@ -55,19 +45,11 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("seat_categories");
             entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.ShowtimeId).HasColumnName("showtime_id");
+            entity.Property(e => e.PerformanceId).HasColumnName("performance_id");
             entity.Property(e => e.Name).HasColumnName("name").HasMaxLength(100);
             entity.Property(e => e.NormalizedName).HasColumnName("normalized_name").HasMaxLength(100);
-            entity.HasAlternateKey(e => new { e.ShowtimeId, e.Id });
-            entity.HasIndex(e => new { e.ShowtimeId, e.NormalizedName }).IsUnique();
-            // Active entities require a real association. Unresolved rows use LegacySeatData's
-            // nullable, untracked projections instead of EF's non-null alternate key.
-            entity.HasQueryFilter(e => Showtimes.Any(show => show.Id == e.ShowtimeId));
-
-            entity.HasOne(e => e.Showtime)
-                .WithMany()
-                .HasForeignKey(e => e.ShowtimeId)
-                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasAlternateKey(e => new { e.PerformanceId, e.Id });
+            entity.HasIndex(e => new { e.PerformanceId, e.NormalizedName }).IsUnique();
         });
 
         modelBuilder.Entity<Seat>(entity =>
@@ -79,14 +61,10 @@ public class AppDbContext : DbContext
                     "status <> 'HELD' OR (held_by_user_id IS NOT NULL AND held_until IS NOT NULL)");
             });
             entity.Property(e => e.Id).HasColumnName("id");
-            entity.Property(e => e.ShowtimeId).HasColumnName("showtime_id");
+            entity.Property(e => e.PerformanceId).HasColumnName("performance_id");
             entity.Property(e => e.SeatCategoryId).HasColumnName("seat_category_id");
             entity.Property(e => e.Row).HasColumnName("row").HasMaxLength(50);
             entity.Property(e => e.Number).HasColumnName("number").HasMaxLength(50);
-            entity.Property(e => e.X).HasColumnName("x").ValueGeneratedNever();
-            entity.Property(e => e.Y).HasColumnName("y").ValueGeneratedNever();
-            entity.HasQueryFilter(e => Showtimes.Any(show => show.Id == e.ShowtimeId)
-                && SeatCategories.Any(category => category.Id == e.SeatCategoryId && category.ShowtimeId == e.ShowtimeId));
             entity.Property(e => e.Status)
                 .HasColumnName("status")
                 .HasConversion(
@@ -95,16 +73,25 @@ public class AppDbContext : DbContext
                 .HasMaxLength(20);
             entity.Property(e => e.HeldByUserId).HasColumnName("held_by_user_id");
             entity.Property(e => e.HeldUntil).HasColumnName("held_until");
-            entity.HasIndex(e => new { e.ShowtimeId, e.Row, e.Number }).IsUnique();
-            entity.HasIndex(e => new { e.ShowtimeId, e.Status, e.HeldUntil });
+            entity.HasIndex(e => new { e.PerformanceId, e.Row, e.Number }).IsUnique();
+            entity.HasIndex(e => new { e.PerformanceId, e.Status, e.HeldUntil });
 
             entity.HasOne(e => e.SeatCategory)
                 .WithMany(category => category.Seats)
-                .HasForeignKey(e => new { e.ShowtimeId, e.SeatCategoryId })
-                .HasPrincipalKey(category => new { category.ShowtimeId, category.Id })
+                .HasForeignKey(e => new { e.PerformanceId, e.SeatCategoryId })
+                .HasPrincipalKey(category => new { category.PerformanceId, category.Id })
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<Performance>(entity =>
+        {
+            entity.ToTable("performances");
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.Title).HasColumnName("title").HasMaxLength(255);
+            entity.Property(e => e.StartTime).HasColumnName("start_time");
+            entity.Property(e => e.EndTime).HasColumnName("end_time");
+            entity.Property(e => e.IsSalesClosed).HasColumnName("is_sales_closed");
+        });
 
         modelBuilder.Entity<Event>(entity =>
         {
@@ -124,7 +111,6 @@ public class AppDbContext : DbContext
                     value => Enum.Parse<EventStatus>(value, true))
                 .HasMaxLength(20);
             entity.Property(e => e.OwnerUserId).HasColumnName("owner_user_id");
-            entity.HasOne<User>().WithMany().HasForeignKey(e => e.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp with time zone");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp with time zone");
         });
@@ -168,9 +154,9 @@ public class AppDbContext : DbContext
             new User
             {
                 Id = 1,
-                Email = "superadmin@example.com",
+                Email = "admin@example.com",
                 Name = "Admin User",
-                PasswordHash = "$argon2id$v=19$m=1024,t=4,p=1$tbY-CiTwfCaubv6wWX_naA$ec5RuEDByqu92ehlxijZ4ZVuZJ4_Hq-Lrjt0LrNVQyI_I",
+                PasswordHash = "$argon2id$v=19$m=1024,t=4,p=1$e/uWMrsUacwSe+MinnJdvw$bfqciaQS7Vh7mbrj4O9AYaIAkcSDBCN1ZA907doLVZE",
                 Status = "Active",
                 CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                 UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
