@@ -4,7 +4,6 @@ using Xunit;
 
 namespace EventTicketing.Tests;
 
-[Trait("Category", "Unit")]
 public class SeatingChartValidatorTests
 {
     private readonly SeatingChartValidator _validator = new();

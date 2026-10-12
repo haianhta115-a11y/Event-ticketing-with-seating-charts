@@ -1,6 +1,3 @@
-using EventTicketing.Api.Security;
-using EventTicketing.Api.SeatMaps;
-using Microsoft.AspNetCore.Http.Features;
 using System.Text;
 using EventTicketing.Api.Models.SeatingChart;
 using EventTicketing.Api.Services;
@@ -17,31 +14,31 @@ public static class SeatingChartEndpoints
         // 1. Endpoint kiểm tra tính hợp lệ của sơ đồ ghế (không lưu vào hệ thống)
         group.MapPost("/validate", async (
             HttpRequest request,
-            SeatingChartPreparation preparation,
+            ISeatingChartValidator validator,
             CancellationToken ct) =>
         {
-            var result = await ProcessValidationAsync(request, preparation, ct);
-            return result.IsValid ? Results.Ok(result) : Results.Json(result, statusCode: result.Errors.Any(e => e.ErrorCode == "FILE_TOO_LARGE") ? 413 : 400);
+            var result = await ProcessValidationAsync(request, validator, ct);
+            return result.IsValid ? Results.Ok(result) : Results.BadRequest(result);
         })
         .WithName("ValidateSeatingChart")
         .WithSummary("Kiểm tra tính hợp lệ của sơ đồ ghế (không lưu vào hệ thống)")
         .Produces<SeatingChartValidationResult>(StatusCodes.Status200OK)
         .Produces<SeatingChartValidationResult>(StatusCodes.Status400BadRequest)
-        .RequireAuthorization(AccessPolicies.EventManagement)
+        .AllowAnonymous()
         .DisableAntiforgery();
 
         // 2. Endpoint tải lên sơ đồ ghế (từ chối toàn bộ nếu có bất kỳ lỗi nào)
         group.MapPost("/upload", async (
             HttpRequest request,
-            SeatingChartPreparation preparation,
+            ISeatingChartValidator validator,
             CancellationToken ct) =>
         {
-            var result = await ProcessValidationAsync(request, preparation, ct);
+            var result = await ProcessValidationAsync(request, validator, ct);
 
             // Quy tắc sống còn (s-06): Nếu có bất kỳ lỗi nào, từ chối toàn bộ file và không lưu trữ
             if (!result.IsValid)
             {
-                return Results.Json(result, statusCode: result.Errors.Any(e => e.ErrorCode == "FILE_TOO_LARGE") ? 413 : 400);
+                return Results.BadRequest(result);
             }
 
             return Results.Created(
@@ -49,16 +46,15 @@ public static class SeatingChartEndpoints
                 new
                 {
                     success = true,
-                    persisted = false,
-                    message = "Tệp đã được kiểm tra, chưa lưu vào suất diễn. Dùng /api/showtimes/{showtimeId}/seats/import để lưu.",
+                    message = "Tải lên và tiếp nhận sơ đồ ghế thành công.",
                     validation = result
                 });
         })
         .WithName("UploadSeatingChart")
-        .WithSummary("Kiểm tra tệp theo contract legacy; không lưu sơ đồ vào suất diễn")
+        .WithSummary("Tải lên sơ đồ ghế (từ chối toàn bộ nếu có bất kỳ lỗi nào)")
         .Produces(StatusCodes.Status201Created)
         .Produces<SeatingChartValidationResult>(StatusCodes.Status400BadRequest)
-        .RequireAuthorization(AccessPolicies.EventManagement)
+        .AllowAnonymous()
         .DisableAntiforgery();
 
         // 3. Endpoint cung cấp cấu trúc mẫu chuẩn cho tệp sơ đồ ghế
@@ -143,36 +139,65 @@ public static class SeatingChartEndpoints
         .WithName("GetSeatingChartTemplate")
         .WithSummary("Cung cấp cấu trúc mẫu chuẩn cho tệp sơ đồ ghế")
         .Produces<SeatingChartFileDto>(StatusCodes.Status200OK)
-        .RequireAuthorization(AccessPolicies.EventManagement);
+        .AllowAnonymous();
 
         return app;
     }
 
     private static async Task<SeatingChartValidationResult> ProcessValidationAsync(
         HttpRequest request,
-        SeatingChartPreparation preparation,
+        ISeatingChartValidator validator,
         CancellationToken ct)
     {
-        var limit = request.HasFormContentType ? 6 * 1024 * 1024 : SeatingChartPreparation.MaximumBytes;
-        var feature = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
-        if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = limit;
-        if (request.ContentLength > limit) return SeatingChartPreparation.Failure("file", "FILE_TOO_LARGE", "Tệp sơ đồ tối đa 5 MB.").Validation;
-        try
+        if (request.HasFormContentType)
         {
-            if (request.HasFormContentType)
+            var form = await request.ReadFormAsync(ct);
+            var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+
+            if (file == null)
             {
-                var form = await request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = SeatingChartPreparation.MaximumBytes }, ct);
-                return (await preparation.ReadFileAsync(form.Files.GetFile("file") ?? form.Files.FirstOrDefault(), ct)).Validation;
+                return SeatingChartValidationResult.SingleError(
+                    "Tệp tải lên (file)",
+                    "file",
+                    "FILE_NOT_FOUND",
+                    "Không tìm thấy tệp sơ đồ được đính kèm trong yêu cầu.");
             }
-            return (await preparation.ReadAsync(request.Body, ct)).Validation;
+
+            if (!file.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                return SeatingChartValidationResult.SingleError(
+                    $"Tệp '{file.FileName}'",
+                    "file.extension",
+                    "INVALID_FILE_EXTENSION",
+                    "Chỉ chấp nhận tệp sơ đồ có định dạng .json.");
+            }
+
+            if (file.Length == 0)
+            {
+                return SeatingChartValidationResult.SingleError(
+                    $"Tệp '{file.FileName}'",
+                    "file.length",
+                    "EMPTY_FILE",
+                    "Tệp sơ đồ rỗng (0 bytes).");
+            }
+
+            await using var stream = file.OpenReadStream();
+            return await validator.ValidateJsonStreamAsync(stream, ct);
         }
-        catch (BadHttpRequestException error) when (error.StatusCode == 413)
-        { return SeatingChartPreparation.Failure("file", "FILE_TOO_LARGE", "Tệp sơ đồ tối đa 5 MB.").Validation; }
-        catch (InvalidDataException error)
+
+        using var reader = new StreamReader(request.Body, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        var content = await reader.ReadToEndAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(content))
         {
-            var tooLarge = error.Message.Contains("length limit", StringComparison.OrdinalIgnoreCase);
-            return SeatingChartPreparation.Failure("file", tooLarge ? "FILE_TOO_LARGE" : "INVALID_MULTIPART",
-                tooLarge ? "Tệp sơ đồ tối đa 5 MB." : "Dữ liệu multipart không hợp lệ.").Validation;
+            return SeatingChartValidationResult.SingleError(
+                "Nội dung yêu cầu (Body)",
+                "root",
+                "EMPTY_FILE",
+                "Nội dung yêu cầu rỗng hoặc không chứa dữ liệu JSON.");
         }
+
+        return validator.ValidateJsonString(content);
     }
 }
+

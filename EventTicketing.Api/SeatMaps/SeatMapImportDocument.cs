@@ -10,6 +10,4 @@ public sealed class SeatMapImportItem
     public string? Row { get; init; }
     public string? Number { get; init; }
     public string? Category { get; init; }
-    public int? X { get; init; }
-    public int? Y { get; init; }
 }

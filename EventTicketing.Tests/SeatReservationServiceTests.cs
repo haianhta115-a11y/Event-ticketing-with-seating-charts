@@ -1,12 +1,11 @@
 using EventTicketing.Api.Data;
 using EventTicketing.Api.Entities;
 using EventTicketing.Api.Services;
-using EventTicketing.Tests.Infrastructure;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventTicketing.Tests;
 
-[Trait("Category", "Integration")]
 public sealed class SeatReservationServiceTests
 {
     private static readonly DateTimeOffset BaselineTime = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
@@ -17,13 +16,13 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task HoldSeatAsync_WhenSeatIsAvailable_HoldsSeatAndStarts10MinuteCountdown()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var clock = new TestTimeProvider(BaselineTime);
         var service = new SeatReservationService(database.Context, clock);
 
-        var seat = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "1", SeatStatus.Available);
+        var seat = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "1", SeatStatus.Available);
 
-        var result = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 101);
+        var result = await service.HoldSeatAsync(performanceId: 1, seatId: seat.Id, userId: 101);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(seat.Id, result.SeatId);
@@ -50,18 +49,18 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task HoldSeatAsync_WhenSeatIsHeldByAnotherUser_RejectsWithAlreadyHeldMessage()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var clock = new TestTimeProvider(BaselineTime);
         var service = new SeatReservationService(database.Context, clock);
 
-        var seat = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "2", SeatStatus.Available);
+        var seat = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "2", SeatStatus.Available);
 
         // User A giữ trước
-        var userAResult = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 101);
+        var userAResult = await service.HoldSeatAsync(performanceId: 1, seatId: seat.Id, userId: 101);
         Assert.True(userAResult.IsSuccess);
 
         // User B thử giữ ghế này
-        var userBResult = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 102);
+        var userBResult = await service.HoldSeatAsync(performanceId: 1, seatId: seat.Id, userId: 102);
 
         Assert.False(userBResult.IsSuccess);
         Assert.Equal(HoldFailureReason.AlreadyHeld, userBResult.FailureReason);
@@ -79,20 +78,20 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task HoldSeatAsync_WhenSeatHoldHasExpired_AllowsAnotherUserToHoldSeat()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var clock = new TestTimeProvider(BaselineTime);
         var service = new SeatReservationService(database.Context, clock);
 
-        var seat = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "3", SeatStatus.Available);
+        var seat = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "3", SeatStatus.Available);
 
         // User A giữ ghế tại T = 0
-        await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 101);
+        await service.HoldSeatAsync(performanceId: 1, seatId: seat.Id, userId: 101);
 
         // Trôi qua 10 phút 1 giây -> Phiên giữ chỗ của User A hết hạn
         clock.Advance(TimeSpan.FromSeconds(601));
 
         // User B chọn ghế này
-        var userBResult = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 102);
+        var userBResult = await service.HoldSeatAsync(performanceId: 1, seatId: seat.Id, userId: 102);
 
         Assert.True(userBResult.IsSuccess);
         database.Context.ChangeTracker.Clear();
@@ -103,13 +102,13 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task HoldSeatAsync_WhenSeatIsAlreadySold_RejectsWithAlreadySold()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var clock = new TestTimeProvider(BaselineTime);
         var service = new SeatReservationService(database.Context, clock);
 
-        var seat = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "4", SeatStatus.Sold);
+        var seat = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "4", SeatStatus.Sold);
 
-        var result = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 101);
+        var result = await service.HoldSeatAsync(performanceId: 1, seatId: seat.Id, userId: 101);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(HoldFailureReason.AlreadySold, result.FailureReason);
@@ -122,30 +121,30 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task HoldSeatAsync_WhenSelectingMultipleSeats_AllShareTheExactSameExpiryFromFirstSeat()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var clock = new TestTimeProvider(BaselineTime);
         var service = new SeatReservationService(database.Context, clock);
 
-        var seat1 = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "B", number: "1", SeatStatus.Available);
-        var seat2 = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "B", number: "2", SeatStatus.Available);
-        var seat3 = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "B", number: "3", SeatStatus.Available);
+        var seat1 = await CreateSeatAsync(database.Context, performanceId: 1, row: "B", number: "1", SeatStatus.Available);
+        var seat2 = await CreateSeatAsync(database.Context, performanceId: 1, row: "B", number: "2", SeatStatus.Available);
+        var seat3 = await CreateSeatAsync(database.Context, performanceId: 1, row: "B", number: "3", SeatStatus.Available);
 
         const int userId = 200;
 
         // T = 0: Chọn ghế 1
-        var result1 = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat1.Id, userId: userId);
+        var result1 = await service.HoldSeatAsync(performanceId: 1, seatId: seat1.Id, userId: userId);
         Assert.True(result1.IsSuccess);
         var initialExpiry = result1.HeldUntilUtc;
         Assert.Equal(600, result1.RemainingSeconds);
 
         // T = +5 giây: Chọn ghế 2
         clock.Advance(TimeSpan.FromSeconds(5));
-        var result2 = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat2.Id, userId: userId);
+        var result2 = await service.HoldSeatAsync(performanceId: 1, seatId: seat2.Id, userId: userId);
         Assert.True(result2.IsSuccess);
 
         // T = +10 giây tiếp (tổng +15s): Chọn ghế 3
         clock.Advance(TimeSpan.FromSeconds(10));
-        var result3 = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat3.Id, userId: userId);
+        var result3 = await service.HoldSeatAsync(performanceId: 1, seatId: seat3.Id, userId: userId);
         Assert.True(result3.IsSuccess);
 
         // Kiểm tra: Cả 3 ghế PHẢI CÙNG 1 mốc thời hạn HeldUntilUtc duy nhất!
@@ -162,7 +161,7 @@ public sealed class SeatReservationServiceTests
         // Kiểm tra trong DB: Cả 3 ghế đều có HeldUntil giống nhau
         database.Context.ChangeTracker.Clear();
         var dbSeats = await database.Context.Seats
-            .Where(s => s.ShowtimeId == 1 && s.HeldByUserId == userId)
+            .Where(s => s.PerformanceId == 1 && s.HeldByUserId == userId)
             .ToListAsync();
         Assert.Equal(3, dbSeats.Count);
         Assert.All(dbSeats, s => Assert.Equal(initialExpiry, s.HeldUntil));
@@ -174,15 +173,24 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task HoldSeatAsync_WhenPerformanceSalesIsClosed_RejectsWithSalesClosedMessage()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var clock = new TestTimeProvider(BaselineTime);
         var service = new SeatReservationService(database.Context, clock);
 
-        await LocalPostgresDatabase.EnsureShowtimeAsync(database.Context, 99, ShowtimeStatus.Closed);
+        // Tạo suất diễn đã đóng bán (IsSalesClosed = true)
+        var performance = new Performance
+        {
+            Id = 99,
+            Title = "Đêm nhạc đặc biệt",
+            StartTime = BaselineTime.AddHours(2).UtcDateTime,
+            IsSalesClosed = true
+        };
+        database.Context.Performances.Add(performance);
+        await database.Context.SaveChangesAsync();
 
-        var seat = await CreateSeatAsync(database.Context, ShowtimeId: 99, row: "C", number: "1", SeatStatus.Available);
+        var seat = await CreateSeatAsync(database.Context, performanceId: 99, row: "C", number: "1", SeatStatus.Available);
 
-        var result = await service.HoldSeatAsync(ShowtimeId: 99, seatId: seat.Id, userId: 101);
+        var result = await service.HoldSeatAsync(performanceId: 99, seatId: seat.Id, userId: 101);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(HoldFailureReason.SalesClosed, result.FailureReason);
@@ -201,14 +209,14 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task HoldSeatAsync_ServerAuthoritative_ProvidesExactServerUtcAndRemainingSeconds()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var serverNow = new DateTimeOffset(2026, 10, 1, 14, 0, 0, TimeSpan.Zero);
         var clock = new TestTimeProvider(serverNow);
         var service = new SeatReservationService(database.Context, clock);
 
-        var seat = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "D", number: "1", SeatStatus.Available);
+        var seat = await CreateSeatAsync(database.Context, performanceId: 1, row: "D", number: "1", SeatStatus.Available);
 
-        var result = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 101);
+        var result = await service.HoldSeatAsync(performanceId: 1, seatId: seat.Id, userId: 101);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(serverNow.UtcDateTime, result.ServerTimeUtc);
@@ -236,39 +244,57 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task HoldSeatAsync_ConcurrentRequests_OnlyOneSucceedsAndTheOtherGetsAlreadyHeld()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
-        var seat = await CreateSeatAsync(database.Context, ShowtimeId: 5, row: "VIP", number: "99", SeatStatus.Available);
-        var seatId = seat.Id;
-        var barrier = new ConcurrentSeatReadBarrier();
+        var connection = new SqliteConnection("Data Source=shared_concurrency_test;Mode=Memory;Cache=Shared");
+        await connection.OpenAsync();
 
-        var clock = new TestTimeProvider(BaselineTime);
+        try
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
+            await using (var initDb = new AppDbContext(options))
+            {
+                await initDb.Database.EnsureCreatedAsync();
+            }
 
-        // Hai context độc lập đại diện cho hai HTTP Request đồng thời từ 2 người dùng
-        await using var dbUser1 = database.CreateContext(barrier);
-        await using var dbUser2 = database.CreateContext(barrier);
+            int seatId;
+            await using (var setupDb = new AppDbContext(options))
+            {
+                var seat = await CreateSeatAsync(setupDb, performanceId: 5, row: "VIP", number: "99", SeatStatus.Available);
+                seatId = seat.Id;
+            }
 
-        var serviceUser1 = new SeatReservationService(dbUser1, clock);
-        var serviceUser2 = new SeatReservationService(dbUser2, clock);
+            var clock = new TestTimeProvider(BaselineTime);
 
-        // Bấm chọn đồng thời (Race condition)
-        var task1 = serviceUser1.HoldSeatAsync(ShowtimeId: 5, seatId: seatId, userId: 101);
-        var task2 = serviceUser2.HoldSeatAsync(ShowtimeId: 5, seatId: seatId, userId: 102);
+            // Hai context độc lập đại diện cho hai HTTP Request đồng thời từ 2 người dùng
+            await using var dbUser1 = new AppDbContext(options);
+            await using var dbUser2 = new AppDbContext(options);
 
-        var results = await Task.WhenAll(task1, task2);
+            var serviceUser1 = new SeatReservationService(dbUser1, clock);
+            var serviceUser2 = new SeatReservationService(dbUser2, clock);
 
-        var successCount = results.Count(r => r.IsSuccess);
-        var failureCount = results.Count(r => !r.IsSuccess && r.ErrorMessage == "ghế vừa có người chọn");
+            // Bấm chọn đồng thời (Race condition)
+            var task1 = serviceUser1.HoldSeatAsync(performanceId: 5, seatId: seatId, userId: 101);
+            var task2 = serviceUser2.HoldSeatAsync(performanceId: 5, seatId: seatId, userId: 102);
 
-        // Chỉ duy nhất 1 người thành công, người kia bị từ chối
-        Assert.Equal(1, successCount);
-        Assert.Equal(1, failureCount);
+            var results = await Task.WhenAll(task1, task2);
 
-        // Kiểm tra trong database: ghế chỉ được giữ bởi đúng 1 người
-        await using var verifyDb = database.CreateContext();
-        var finalSeat = await verifyDb.Seats.FindAsync(seatId);
-        Assert.NotNull(finalSeat);
-        Assert.Equal(SeatStatus.Held, finalSeat.Status);
-        Assert.True(finalSeat.HeldByUserId == 101 || finalSeat.HeldByUserId == 102);
+            var successCount = results.Count(r => r.IsSuccess);
+            var failureCount = results.Count(r => !r.IsSuccess && r.ErrorMessage == "ghế vừa có người chọn");
+
+            // Chỉ duy nhất 1 người thành công, người kia bị từ chối
+            Assert.Equal(1, successCount);
+            Assert.Equal(1, failureCount);
+
+            // Kiểm tra trong database: ghế chỉ được giữ bởi đúng 1 người
+            await using var verifyDb = new AppDbContext(options);
+            var finalSeat = await verifyDb.Seats.FindAsync(seatId);
+            Assert.NotNull(finalSeat);
+            Assert.Equal(SeatStatus.Held, finalSeat.Status);
+            Assert.True(finalSeat.HeldByUserId == 101 || finalSeat.HeldByUserId == 102);
+        }
+        finally
+        {
+            await connection.DisposeAsync();
+        }
     }
 
     // =========================================================================
@@ -277,15 +303,15 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task ReleaseSeatAsync_WhenCalledByHoldOwner_FreesTheSeat()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var clock = new TestTimeProvider(BaselineTime);
         var service = new SeatReservationService(database.Context, clock);
 
-        var seat = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "10", SeatStatus.Available);
+        var seat = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "10", SeatStatus.Available);
 
-        await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 101);
+        await service.HoldSeatAsync(performanceId: 1, seatId: seat.Id, userId: 101);
 
-        var released = await service.ReleaseSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 101);
+        var released = await service.ReleaseSeatAsync(performanceId: 1, seatId: seat.Id, userId: 101);
         Assert.True(released.IsSuccess);
 
         database.Context.ChangeTracker.Clear();
@@ -299,17 +325,17 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task ReleaseSeatAsync_AC1_ReleaseOneSeatKeepsOthersIntact()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var clock = new TestTimeProvider(BaselineTime);
         var service = new SeatReservationService(database.Context, clock);
 
-        var seat1 = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "1", SeatStatus.Available);
-        var seat2 = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "2", SeatStatus.Available);
+        var seat1 = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "1", SeatStatus.Available);
+        var seat2 = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "2", SeatStatus.Available);
 
-        var hold1 = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat1.Id, userId: 101);
-        var hold2 = await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat2.Id, userId: 101);
+        var hold1 = await service.HoldSeatAsync(performanceId: 1, seatId: seat1.Id, userId: 101);
+        var hold2 = await service.HoldSeatAsync(performanceId: 1, seatId: seat2.Id, userId: 101);
 
-        var released = await service.ReleaseSeatAsync(ShowtimeId: 1, seatId: seat1.Id, userId: 101);
+        var released = await service.ReleaseSeatAsync(performanceId: 1, seatId: seat1.Id, userId: 101);
         Assert.True(released.IsSuccess);
 
         database.Context.ChangeTracker.Clear();
@@ -328,17 +354,17 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task ReleaseSeatAsync_AC2_ReleaseAllSeatsRemovesHoldSession()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var clock = new TestTimeProvider(BaselineTime);
         var service = new SeatReservationService(database.Context, clock);
 
-        var seat = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "1", SeatStatus.Available);
-        await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 101);
+        var seat = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "1", SeatStatus.Available);
+        await service.HoldSeatAsync(performanceId: 1, seatId: seat.Id, userId: 101);
 
-        var released = await service.ReleaseSeatAsync(ShowtimeId: 1, seatId: seat.Id, userId: 101);
+        var released = await service.ReleaseSeatAsync(performanceId: 1, seatId: seat.Id, userId: 101);
         Assert.True(released.IsSuccess);
 
-        var session = await service.GetUserHoldSessionAsync(ShowtimeId: 1, userId: 101);
+        var session = await service.GetUserHoldSessionAsync(performanceId: 1, userId: 101);
         Assert.Null(session);
     }
 
@@ -348,19 +374,19 @@ public sealed class SeatReservationServiceTests
     [Fact]
     public async Task GetSeatingChartStatusAsync_CorrectlyCalculatesHeldByMeAndHeldByOther()
     {
-        await using var database = await LocalPostgresDatabase.CreateAsync();
+        await using var database = await TestDatabase.CreateAsync();
         var clock = new TestTimeProvider(BaselineTime);
         var service = new SeatReservationService(database.Context, clock);
 
-        var seat1 = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "1", SeatStatus.Available);
-        var seat2 = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "2", SeatStatus.Available);
-        var seat3 = await CreateSeatAsync(database.Context, ShowtimeId: 1, row: "A", number: "3", SeatStatus.Sold);
+        var seat1 = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "1", SeatStatus.Available);
+        var seat2 = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "2", SeatStatus.Available);
+        var seat3 = await CreateSeatAsync(database.Context, performanceId: 1, row: "A", number: "3", SeatStatus.Sold);
 
         // User 101 giữ seat1
-        await service.HoldSeatAsync(ShowtimeId: 1, seatId: seat1.Id, userId: 101);
+        await service.HoldSeatAsync(performanceId: 1, seatId: seat1.Id, userId: 101);
 
         // User 102 xem sơ đồ
-        var chartForUser102 = await service.GetSeatingChartStatusAsync(ShowtimeId: 1, currentUserId: 102);
+        var chartForUser102 = await service.GetSeatingChartStatusAsync(performanceId: 1, currentUserId: 102);
 
         var display1 = chartForUser102.Single(s => s.Id == seat1.Id);
         var display2 = chartForUser102.Single(s => s.Id == seat2.Id);
@@ -376,7 +402,7 @@ public sealed class SeatReservationServiceTests
         Assert.False(display3.CanSelect);
 
         // User 101 xem sơ đồ
-        var chartForUser101 = await service.GetSeatingChartStatusAsync(ShowtimeId: 1, currentUserId: 101);
+        var chartForUser101 = await service.GetSeatingChartStatusAsync(performanceId: 1, currentUserId: 101);
         var display1ForUser101 = chartForUser101.Single(s => s.Id == seat1.Id);
 
         Assert.Equal("HeldByMe", display1ForUser101.DisplayStatus);
@@ -385,20 +411,19 @@ public sealed class SeatReservationServiceTests
 
     private static async Task<Seat> CreateSeatAsync(
         AppDbContext db,
-        int ShowtimeId,
+        int performanceId,
         string row,
         string number,
         SeatStatus status)
     {
-        await LocalPostgresDatabase.EnsureShowtimeAsync(db, ShowtimeId);
         var category = await db.SeatCategories
-            .FirstOrDefaultAsync(c => c.ShowtimeId == ShowtimeId && c.NormalizedName == "STANDARD");
+            .FirstOrDefaultAsync(c => c.PerformanceId == performanceId && c.NormalizedName == "STANDARD");
 
         if (category == null)
         {
             category = new SeatCategory
             {
-                ShowtimeId = ShowtimeId,
+                PerformanceId = performanceId,
                 Name = "Standard",
                 NormalizedName = "STANDARD"
             };
@@ -408,7 +433,7 @@ public sealed class SeatReservationServiceTests
 
         var seat = new Seat
         {
-            ShowtimeId = ShowtimeId,
+            PerformanceId = performanceId,
             SeatCategoryId = category.Id,
             Row = row,
             Number = number,
@@ -418,6 +443,37 @@ public sealed class SeatReservationServiceTests
         db.Seats.Add(seat);
         await db.SaveChangesAsync();
         return seat;
+    }
+
+    private sealed class TestDatabase : IAsyncDisposable
+    {
+        private readonly SqliteConnection connection;
+
+        private TestDatabase(SqliteConnection connection, AppDbContext context)
+        {
+            this.connection = connection;
+            Context = context;
+        }
+
+        public AppDbContext Context { get; }
+
+        public static async Task<TestDatabase> CreateAsync()
+        {
+            var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseSqlite(connection)
+                .Options;
+            var context = new AppDbContext(options);
+            await context.Database.EnsureCreatedAsync();
+            return new TestDatabase(connection, context);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Context.DisposeAsync();
+            await connection.DisposeAsync();
+        }
     }
 
     private sealed class TestTimeProvider(DateTimeOffset initialUtcNow) : TimeProvider

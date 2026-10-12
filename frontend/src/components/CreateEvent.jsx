@@ -1,14 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
-import { createEvent, updateEvent, getEventById } from '../api/eventsApi';
-import { validateEvent, apiErrors, apiMessage, submissionGate } from '../events/management';
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { createEvent } from '../api/eventsApi';
 
 export default function CreateEvent() {
   const navigate = useNavigate();
-  const { id } = useParams();
-  const gate = useRef(submissionGate());
-  const [loading, setLoading] = useState(Boolean(id));
-  const [loadError, setLoadError] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -18,14 +13,20 @@ export default function CreateEvent() {
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generalError, setGeneralError] = useState('');
-  useEffect(() => {
-    if (!id) return;
-    let ignore = false;
-    getEventById(id).then(data => { if (!ignore) setFormData(data); })
-      .catch(error => { if (!ignore) setLoadError(apiMessage(error)); })
-      .finally(() => { if (!ignore) setLoading(false); });
-    return () => { ignore = true; };
-  }, [id]);
+
+  const validate = () => {
+    const newErrors = {};
+    if (!formData.name.trim()) {
+      newErrors.name = 'Vui lòng nhập tên sự kiện';
+    }
+    if (!formData.description.trim()) {
+      newErrors.description = 'Vui lòng nhập mô tả sự kiện';
+    }
+    if (!formData.location.trim()) {
+      newErrors.location = 'Vui lòng nhập địa điểm tổ chức';
+    }
+    return newErrors;
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -37,32 +38,29 @@ export default function CreateEvent() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!gate.current.enter()) return;
     setGeneralError('');
 
-    const validationErrors = validateEvent(formData);
+    const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
-      gate.current.leave();
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const data = { name: formData.name, description: formData.description, location: formData.location, imageUrl: formData.imageUrl };
-      const newEvent = id ? await updateEvent(id, data) : await createEvent(data);
+      const newEvent = await createEvent({
+        name: formData.name,
+        description: formData.description,
+        location: formData.location,
+      });
 
       navigate(`/events/${newEvent.id}`);
     } catch (err) {
-      setErrors(apiErrors(err));
-      setGeneralError(apiMessage(err));
+      setGeneralError(err?.message || 'Không thể tạo sự kiện. Vui lòng thử lại.');
       setIsSubmitting(false);
-      gate.current.leave();
     }
   };
 
-  if (loading) return <p>Đang tải sự kiện...</p>;
-  if (loadError) return <div role="alert">{loadError} <Link to="/events">Quay lại danh sách</Link></div>;
   return (
     <div
       style={{
@@ -79,10 +77,10 @@ export default function CreateEvent() {
       {/* Header */}
       <div style={{ marginBottom: '20px', borderBottom: '1px solid var(--border, #2e303a)', paddingBottom: '12px' }}>
         <h2 style={{ margin: '0 0 6px 0', fontSize: '22px', color: 'var(--text-h, #f1f5f9)', fontWeight: '600' }}>
-          {id ? 'Sửa sự kiện' : 'Tạo Sự Kiện Mới'}
+          Tạo Sự Kiện Mới
         </h2>
         <p style={{ margin: 0, fontSize: '14px', color: 'var(--text, #9ca3af)' }}>
-          {id ? 'Cập nhật thông tin sự kiện.' : 'Sự kiện mới sẽ được lưu dưới dạng Bản nháp.'}
+          Nhập các thông tin cơ bản của sự kiện. Sự kiện mới sẽ được lưu dưới dạng <strong>Bản nháp</strong>.
         </p>
       </div>
 

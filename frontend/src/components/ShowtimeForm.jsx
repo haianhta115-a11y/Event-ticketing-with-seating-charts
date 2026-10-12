@@ -1,6 +1,5 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { createShowtime } from '../api/eventsApi';
-import { vietnamToUtc, validateShowtime, apiErrors, apiMessage, submissionGate } from '../events/management';
 
 export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowtimeCreated }) {
   const [startTime, setStartTime] = useState('');
@@ -8,15 +7,11 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const gate = useRef(submissionGate());
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [savedWarning, setSavedWarning] = useState('');
-  const [savedId, setSavedId] = useState(null);
 
   // Kiểm tra trùng lặp hoàn toàn
   const checkExactDuplicate = (startVal, endVal) => {
-    const startTimestamp = new Date(vietnamToUtc(startVal)).getTime();
-    const endTimestamp = endVal ? new Date(vietnamToUtc(endVal)).getTime() : null;
+    const startTimestamp = new Date(startVal).getTime();
+    const endTimestamp = endVal ? new Date(endVal).getTime() : null;
 
     return existingShowtimes.some((s) => {
       const sStart = new Date(s.startTime).getTime();
@@ -25,19 +20,35 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
     });
   };
 
-  const handleSave = async (forceSave = false) => {
-    if (!gate.current.enter()) return;
-    setError('');
-    setFieldErrors({});
-    setSavedWarning('');
-    setSavedId(null);
+  const validate = () => {
+    if (!startTime) {
+      return 'Vui lòng chọn thời điểm bắt đầu';
+    }
 
-    const validationErrors = validateShowtime(startTime, endTime);
-    if (Object.keys(validationErrors).length) {
-      setError('Vui lòng kiểm tra các ô nhập liệu.');
+    const startDate = new Date(startTime);
+    // Bắt buộc thời điểm bắt đầu ở tương lai
+    if (startDate.getTime() <= Date.now()) {
+      return 'Thời điểm bắt đầu phải ở tương lai';
+    }
+
+    // Chỉ kiểm tra khi người dùng có nhập thời điểm kết thúc
+    if (endTime) {
+      const endDate = new Date(endTime);
+      if (endDate.getTime() <= startDate.getTime()) {
+        return 'Thời gian kết thúc phải sau thời gian bắt đầu';
+      }
+    }
+
+    return null;
+  };
+
+  const handleSave = async (forceSave = false) => {
+    setError('');
+
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
       setWarning('');
-      setFieldErrors(validationErrors);
-      gate.current.leave();
       return;
     }
 
@@ -46,7 +57,6 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
       const isDuplicate = checkExactDuplicate(startTime, endTime);
       if (isDuplicate) {
         setWarning('Trùng thời gian với một suất diễn khác. Có thể bạn đang tổ chức song song ở hai phòng');
-        gate.current.leave();
         return;
       }
     }
@@ -56,8 +66,8 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
 
     try {
       const created = await createShowtime(eventId, {
-        startTime: vietnamToUtc(startTime),
-        endTime: endTime ? vietnamToUtc(endTime) : null,
+        startTime,
+        endTime: endTime || null,
       });
 
       // Reset form sau khi lưu thành công
@@ -65,18 +75,14 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
       setEndTime('');
       setError('');
       setWarning('');
-      setSavedWarning((created.warnings || []).join(' '));
-      setSavedId(created.id);
 
       if (onShowtimeCreated) {
         onShowtimeCreated(created);
       }
     } catch (err) {
-      setFieldErrors(apiErrors(err));
-      setError(apiMessage(err));
+      setError(err?.message || 'Có lỗi xảy ra khi lưu suất diễn. Vui lòng thử lại.');
     } finally {
       setIsSaving(false);
-      gate.current.leave();
     }
   };
 
@@ -100,7 +106,7 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
         Thêm Suất Diễn Mới
       </h4>
       <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: 'var(--text, #9ca3af)' }}>
-        Nhập giờ Việt Nam (UTC+7). Thời điểm bắt đầu phải ở tương lai.
+        Thiết lập thời gian diễn ra sự kiện. Thời điểm bắt đầu phải ở tương lai.
       </p>
 
       {/* Thông báo lỗi đỏ (chặn lưu) */}
@@ -122,7 +128,6 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
       )}
 
       {/* Cảnh báo vàng (trùng giờ, vẫn cho lưu) */}
-      {savedId !== null && <p role="status">Đã lưu suất diễn #{savedId}. {savedWarning}</p>}
       {warning && (
         <div
           style={{
@@ -203,7 +208,6 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
             <input
               id="startTime"
               type="datetime-local"
-              aria-describedby="startTime-error"
               value={startTime}
               onChange={(e) => {
                 setStartTime(e.target.value);
@@ -223,7 +227,6 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
                 color: 'var(--text-h, #f1f5f9)',
               }}
             />
-            {fieldErrors.startTime && <p id="startTime-error" role="alert">{fieldErrors.startTime}</p>}
           </div>
 
           {/* Thời gian kết thúc */}
@@ -243,7 +246,6 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
             <input
               id="endTime"
               type="datetime-local"
-              aria-describedby="endTime-error"
               value={endTime}
               onChange={(e) => {
                 setEndTime(e.target.value);
@@ -263,7 +265,6 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
                 color: 'var(--text-h, #f1f5f9)',
               }}
             />
-            {fieldErrors.endTime && <p id="endTime-error" role="alert">{fieldErrors.endTime}</p>}
           </div>
         </div>
 

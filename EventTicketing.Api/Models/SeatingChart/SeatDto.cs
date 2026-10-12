@@ -11,6 +11,5 @@ public class SeatDto
     public double? X { get; set; }
     public double? Y { get; set; }
     public bool? IsAccessible { get; set; }
-    public DateTime? HeldUntilUtc { get; set; }
 }
 

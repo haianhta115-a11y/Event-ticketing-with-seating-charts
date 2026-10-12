@@ -1,15 +1,15 @@
-import { clearSession, getSession } from './auth/session';
 import { Outlet, Link, useNavigate } from 'react-router-dom'
 import RequireRole from './components/RequireRole'
 import './App.css'
 
 function App() {
   const navigate = useNavigate();
-  const token = getSession()?.token;
+  const token = localStorage.getItem('token');
   const role = localStorage.getItem('role');
 
   const handleLogout = () => {
-    clearSession();
+    localStorage.removeItem('token');
+    localStorage.removeItem('role');
     navigate('/login');
   };
 

@@ -5,26 +5,52 @@ using EventTicketing.Api.Data;
 using EventTicketing.Api.Entities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using EventTicketing.Tests.Infrastructure;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using StackExchange.Redis;
 
 namespace EventTicketing.Tests;
 
-[Trait("Category", "Integration")]
-public class SeatReservationEndpointTests : IAsyncLifetime
+public class SeatReservationEndpointTests : IAsyncDisposable
 {
-    private LocalPostgresDatabase database = null!;
-    private LocalApplicationFactory factory = null!;
-    private HttpClient client = null!;
+    private readonly SqliteConnection sqliteConnection;
+    private readonly WebApplicationFactory<Program> factory;
+    private readonly HttpClient client;
 
-    public async Task InitializeAsync()
+    public SeatReservationEndpointTests()
     {
-        database = await LocalPostgresDatabase.CreateAsync();
-        await LocalPostgresDatabase.EnsureShowtimeAsync(database.Context, 1);
-        factory = new LocalApplicationFactory(database);
+        sqliteConnection = new SqliteConnection("Data Source=:memory:");
+        sqliteConnection.Open();
+
+        var mockRedis = new Mock<IConnectionMultiplexer>();
+        mockRedis.Setup(r => r.IsConnected).Returns(true);
+
+        factory = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment("Testing");
+                builder.ConfigureServices(services =>
+                {
+                    services.AddDbContext<AppDbContext>(options =>
+                    {
+                        options.UseSqlite(sqliteConnection);
+                    });
+
+                    var redisDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IConnectionMultiplexer));
+                    if (redisDescriptor != null) services.Remove(redisDescriptor);
+
+                    services.AddSingleton<IConnectionMultiplexer>(mockRedis.Object);
+                });
+            });
+
+        // Khởi tạo schema trong SQLite
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Database.EnsureCreated();
+
         client = factory.CreateClient();
-        factory.Authenticate(client, 101, "Buyer");
     }
 
     [Fact]
@@ -34,17 +60,17 @@ public class SeatReservationEndpointTests : IAsyncLifetime
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var cat = new SeatCategory { ShowtimeId = 1, Name = "VIP", NormalizedName = "VIP" };
+            var cat = new SeatCategory { PerformanceId = 1, Name = "VIP", NormalizedName = "VIP" };
             db.SeatCategories.Add(cat);
             await db.SaveChangesAsync();
 
-            var seat = new Seat { ShowtimeId = 1, SeatCategoryId = cat.Id, Row = "A", Number = "1", Status = SeatStatus.Available };
+            var seat = new Seat { PerformanceId = 1, SeatCategoryId = cat.Id, Row = "A", Number = "1", Status = SeatStatus.Available };
             db.Seats.Add(seat);
             await db.SaveChangesAsync();
             seatId = seat.Id;
         }
 
-        var response = await client.PostAsJsonAsync($"/api/showtimes/1/seats/{seatId}/hold", new { UserId = 101 });
+        var response = await client.PostAsJsonAsync($"/api/performances/1/seats/{seatId}/hold", new { UserId = 101 });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -64,23 +90,22 @@ public class SeatReservationEndpointTests : IAsyncLifetime
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var cat = new SeatCategory { ShowtimeId = 1, Name = "Standard", NormalizedName = "STANDARD" };
+            var cat = new SeatCategory { PerformanceId = 1, Name = "Standard", NormalizedName = "STANDARD" };
             db.SeatCategories.Add(cat);
             await db.SaveChangesAsync();
 
-            var seat = new Seat { ShowtimeId = 1, SeatCategoryId = cat.Id, Row = "B", Number = "2", Status = SeatStatus.Available };
+            var seat = new Seat { PerformanceId = 1, SeatCategoryId = cat.Id, Row = "B", Number = "2", Status = SeatStatus.Available };
             db.Seats.Add(seat);
             await db.SaveChangesAsync();
             seatId = seat.Id;
         }
 
         // User A giữ trước
-        var firstResponse = await client.PostAsJsonAsync($"/api/showtimes/1/seats/{seatId}/hold", new { UserId = 101 });
+        var firstResponse = await client.PostAsJsonAsync($"/api/performances/1/seats/{seatId}/hold", new { UserId = 101 });
         Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
 
         // User B thử giữ
-        factory.Authenticate(client, 102, "Buyer");
-        var secondResponse = await client.PostAsJsonAsync($"/api/showtimes/1/seats/{seatId}/hold", new { UserId = 102 });
+        var secondResponse = await client.PostAsJsonAsync($"/api/performances/1/seats/{seatId}/hold", new { UserId = 102 });
 
         Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
         var body = await secondResponse.Content.ReadFromJsonAsync<JsonElement>();
@@ -98,19 +123,20 @@ public class SeatReservationEndpointTests : IAsyncLifetime
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            await LocalPostgresDatabase.EnsureShowtimeAsync(db, 88, ShowtimeStatus.Closed);
+            var perf = new Performance { Id = 88, Title = "Suất diễn đóng", IsSalesClosed = true };
+            db.Performances.Add(perf);
 
-            var cat = new SeatCategory { ShowtimeId = 88, Name = "VIP", NormalizedName = "VIP" };
+            var cat = new SeatCategory { PerformanceId = 88, Name = "VIP", NormalizedName = "VIP" };
             db.SeatCategories.Add(cat);
             await db.SaveChangesAsync();
 
-            var seat = new Seat { ShowtimeId = 88, SeatCategoryId = cat.Id, Row = "C", Number = "3", Status = SeatStatus.Available };
+            var seat = new Seat { PerformanceId = 88, SeatCategoryId = cat.Id, Row = "C", Number = "3", Status = SeatStatus.Available };
             db.Seats.Add(seat);
             await db.SaveChangesAsync();
             seatId = seat.Id;
         }
 
-        var response = await client.PostAsJsonAsync($"/api/showtimes/88/seats/{seatId}/hold", new { UserId = 101 });
+        var response = await client.PostAsJsonAsync($"/api/performances/88/seats/{seatId}/hold", new { UserId = 101 });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -127,25 +153,25 @@ public class SeatReservationEndpointTests : IAsyncLifetime
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var cat = new SeatCategory { ShowtimeId = 1, Name = "Standard", NormalizedName = "STANDARD" };
+            var cat = new SeatCategory { PerformanceId = 1, Name = "Standard", NormalizedName = "STANDARD" };
             db.SeatCategories.Add(cat);
             await db.SaveChangesAsync();
 
-            var seat = new Seat { ShowtimeId = 1, SeatCategoryId = cat.Id, Row = "D", Number = "4", Status = SeatStatus.Available };
+            var seat = new Seat { PerformanceId = 1, SeatCategoryId = cat.Id, Row = "D", Number = "4", Status = SeatStatus.Available };
             db.Seats.Add(seat);
             await db.SaveChangesAsync();
             seatId = seat.Id;
         }
 
         // Giữ ghế
-        await client.PostAsJsonAsync($"/api/showtimes/1/seats/{seatId}/hold", new { UserId = 101 });
+        await client.PostAsJsonAsync($"/api/performances/1/seats/{seatId}/hold", new { UserId = 101 });
 
         // Hủy giữ ghế
-        var deleteResponse = await client.DeleteAsync($"/api/showtimes/1/seats/{seatId}/hold?userIdQuery=101");
+        var deleteResponse = await client.DeleteAsync($"/api/performances/1/seats/{seatId}/hold?userIdQuery=101");
         Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
 
         // Kiểm tra sơ đồ ghế
-        var chartResponse = await client.GetAsync("/api/showtimes/1/seats");
+        var chartResponse = await client.GetAsync("/api/performances/1/seats");
         Assert.Equal(HttpStatusCode.OK, chartResponse.StatusCode);
         var chartBody = await chartResponse.Content.ReadFromJsonAsync<JsonElement>();
         var seatsArray = chartBody.GetProperty("seats").EnumerateArray();
@@ -160,22 +186,21 @@ public class SeatReservationEndpointTests : IAsyncLifetime
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var cat = new SeatCategory { ShowtimeId = 1, Name = "Standard", NormalizedName = "STANDARD" };
+            var cat = new SeatCategory { PerformanceId = 1, Name = "Standard", NormalizedName = "STANDARD" };
             db.SeatCategories.Add(cat);
             await db.SaveChangesAsync();
 
-            var seat = new Seat { ShowtimeId = 1, SeatCategoryId = cat.Id, Row = "E", Number = "5", Status = SeatStatus.Available };
+            var seat = new Seat { PerformanceId = 1, SeatCategoryId = cat.Id, Row = "E", Number = "5", Status = SeatStatus.Available };
             db.Seats.Add(seat);
             await db.SaveChangesAsync();
             seatId = seat.Id;
         }
 
         // User A (101) giữ ghế
-        await client.PostAsJsonAsync($"/api/showtimes/1/seats/{seatId}/hold", new { UserId = 101 });
+        await client.PostAsJsonAsync($"/api/performances/1/seats/{seatId}/hold", new { UserId = 101 });
 
         // User B (102) thử hủy ghế của User A
-        factory.Authenticate(client, 102, "Buyer");
-        var deleteResponse = await client.DeleteAsync($"/api/showtimes/1/seats/{seatId}/hold?userIdQuery=102");
+        var deleteResponse = await client.DeleteAsync($"/api/performances/1/seats/{seatId}/hold?userIdQuery=102");
         Assert.Equal(HttpStatusCode.Forbidden, deleteResponse.StatusCode);
 
         var body = await deleteResponse.Content.ReadFromJsonAsync<JsonElement>();
@@ -192,11 +217,11 @@ public class SeatReservationEndpointTests : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         client.Dispose();
         await factory.DisposeAsync();
-        await database.DisposeAsync();
+        await sqliteConnection.DisposeAsync();
     }
 }
 

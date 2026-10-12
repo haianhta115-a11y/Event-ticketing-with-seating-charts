@@ -1,20 +1,23 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getEventById, getShowtimes, updateShowtimeSalesStatus, uploadSeatingChart, previewSeatingChart, publishEvent } from '../api/eventsApi';
+import { getEventById, getShowtimes, updateShowtimeSalesStatus } from '../api/eventsApi';
 import { EVENT_STATUS, getEventStatusInfo, SHOWTIME_STATUS, getShowtimeStatusInfo } from '../constants/eventStatus';
 import ShowtimeForm from './ShowtimeForm';
-import SeatingChartPreview from './SeatingChartPreview';
-import { formatVietnamTime, apiMessage, submissionGate } from '../events/management';
-import { importMessage } from '../events/seatImport';
 
-const formatDateTime = formatVietnamTime;
+const formatDateTime = (isoString) => {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  return d.toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
 
 export default function EventDetail() {
   const { id } = useParams();
-  return <EventDetailScreen key={id} id={id} />;
-}
-
-function EventDetailScreen({ id }) {
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -55,76 +58,6 @@ function EventDetailScreen({ id }) {
     }
   };
 
-  const handlePublishEvent = async () => {
-    if (!window.confirm('Xuất bản sự kiện này? Việc mở bán được thực hiện riêng cho từng suất diễn.')) {
-      return;
-    }
-    setActionError(null);
-    setActionSuccess(null);
-    setActionLoadingId('publish');
-
-    try {
-      await publishEvent(event.id);
-      setEvent(prev => ({ ...prev, status: EVENT_STATUS.PUBLISHED }));
-      alert("Xuất bản sự kiện thành công!");
-    } catch (err) {
-      setActionError(err?.message || 'Có lỗi khi xuất bản sự kiện');
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-
-  const [uploadingId, setUploadingId] = useState(null);
-  const uploadGate = useRef(submissionGate());
-  const [chartPreview, setChartPreview] = useState(null);
-  const [chartAttempted, setChartAttempted] = useState(false);
-  const previewEpoch = useRef(0);
-
-  const handleUploadSeatMap = async (e, showtimeId) => {
-    const file = e.target.files[0];
-    const input = e.target;
-    if (!file || !uploadGate.current.enter()) return;
-
-    setActionError(null);
-    setActionSuccess(null);
-    setUploadingId(showtimeId);
-    setChartPreview(null); setChartAttempted(true);
-    const epoch = ++previewEpoch.current;
-
-    try {
-      const result = await previewSeatingChart(showtimeId, file);
-      if (epoch === previewEpoch.current) setChartPreview({ ...result, showtimeId, file });
-    } catch (err) {
-      if (epoch === previewEpoch.current) setActionError(importMessage(err));
-    } finally {
-      setUploadingId(null);
-      input.value = ''; // reset input
-      uploadGate.current.leave();
-    }
-  };
-
-  const confirmSeatMap = async () => {
-    if (!chartPreview || !uploadGate.current.enter()) return;
-    const selected = chartPreview;
-    const epoch = previewEpoch.current;
-    try {
-      if (showtimes.find(s => s.id === selected.showtimeId)?.hasSeatMap &&
-          !window.confirm('Thay sơ đồ hiện tại? Hệ thống chặn nếu ghế đã bán, đang giữ hoặc có dữ liệu lịch sử tham chiếu.')) return;
-      setUploadingId(selected.showtimeId);
-      setActionError(null);
-      const result = await uploadSeatingChart(selected.showtimeId, selected.file);
-      if (epoch !== previewEpoch.current) return;
-      setChartPreview(null); setChartAttempted(false);
-      fetchShowtimes();
-      setActionSuccess(`Đã lưu ${result.seatCount} ghế. ${result.replacedExistingMap ? 'Sơ đồ cũ đã được thay an toàn.' : ''}`);
-    } catch (err) {
-      if (epoch === previewEpoch.current) setActionError(importMessage(err));
-    } finally {
-      setUploadingId(null);
-      uploadGate.current.leave();
-    }
-  };
-
   const fetchShowtimes = () => {
     setLoadingShowtimes(true);
     setShowtimesError(null);
@@ -133,7 +66,7 @@ function EventDetailScreen({ id }) {
         setShowtimes(data);
       })
       .catch((err) => {
-        setShowtimesError(`Không tải được danh sách suất diễn: ${apiMessage(err)}`);
+        setShowtimesError(err?.message || 'Có lỗi xảy ra khi tải danh sách suất diễn.');
       })
       .finally(() => {
         setLoadingShowtimes(false);
@@ -170,7 +103,7 @@ function EventDetailScreen({ id }) {
       })
       .catch((err) => {
         if (!ignore) {
-          setShowtimesError(`Không tải được danh sách suất diễn: ${apiMessage(err)}`);
+          setShowtimesError(err?.message || 'Có lỗi xảy ra khi tải danh sách suất diễn.');
         }
       })
       .finally(() => {
@@ -220,7 +153,7 @@ function EventDetailScreen({ id }) {
         }}
       >
         <h3 style={{ margin: '0 0 8px 0', fontSize: '18px' }}>Từ chối truy cập</h3>
-        <p style={{ margin: '0 0 20px 0', fontSize: '14px' }}>{error ? apiMessage(error) : 'Không tìm thấy sự kiện.'}</p>
+        <p style={{ margin: '0 0 20px 0', fontSize: '14px' }}>Bạn không có quyền truy cập sự kiện này</p>
         <Link
           to="/events"
           style={{
@@ -241,7 +174,7 @@ function EventDetailScreen({ id }) {
   }
 
   const statusInfo = getEventStatusInfo(event.status);
-  const isDraft = !event.status || event.status === EVENT_STATUS.DRAFT || event.status === 'Không xác định' || event.status === 0;
+  const isDraft = event.status === EVENT_STATUS.DRAFT;
 
   // Sắp xếp suất diễn tăng dần theo thời gian bắt đầu
   const sortedShowtimes = [...showtimes].sort(
@@ -279,46 +212,24 @@ function EventDetailScreen({ id }) {
         </Link>
       </div>
 
-      <Link to={`/events/${event.id}/edit`}>Sửa sự kiện</Link>
-
       {/* Draft banner notice */}
       {isDraft && (
         <div
           style={{
-            padding: '16px',
+            padding: '12px 16px',
             marginBottom: '20px',
             backgroundColor: '#fffbeb',
             border: '1px solid #fde68a',
-            borderRadius: '8px',
+            borderRadius: '6px',
             color: '#92400e',
             display: 'flex',
-            justifyContent: 'space-between',
             alignItems: 'center',
-            gap: '16px',
-            flexWrap: 'wrap'
+            gap: '8px',
+            fontSize: '14px',
+            fontWeight: '500',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px', fontWeight: '500' }}>
-            <span>ℹ️</span> Sự kiện đang ở trạng thái Nháp và bị ẩn khỏi người mua. Hãy xuất bản khi bạn đã sẵn sàng!
-          </div>
-          <button
-            onClick={handlePublishEvent}
-            disabled={actionLoadingId === 'publish'}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#f59e0b',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '15px',
-              fontWeight: '700',
-              cursor: actionLoadingId === 'publish' ? 'wait' : 'pointer',
-              opacity: actionLoadingId === 'publish' ? 0.7 : 1,
-              boxShadow: '0 2px 4px rgba(245, 158, 11, 0.2)'
-            }}
-          >
-            {actionLoadingId === 'publish' ? 'Đang xử lý...' : '🚀 Xuất bản Sự kiện'}
-          </button>
+          <span>ℹ️</span> Chưa hiển thị với người mua
         </div>
       )}
 
@@ -386,9 +297,6 @@ function EventDetailScreen({ id }) {
           </span>
         </div>
 
-        <SeatingChartPreview preview={chartPreview} attempted={chartAttempted} busy={uploadingId !== null}
-          onConfirm={confirmSeatMap} onCancel={() => { setChartPreview(null); setChartAttempted(false); }} />
-
         {/* Thông báo lỗi / thành công khi đổi trạng thái mở/đóng bán */}
         {actionError && (
           <div
@@ -405,7 +313,7 @@ function EventDetailScreen({ id }) {
               alignItems: 'center',
             }}
           >
-            <span style={{ whiteSpace: 'pre-wrap' }}>⚠ {actionError}</span>
+            <span>s {actionError}</span>
             <button
               onClick={() => setActionError(null)}
               style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', fontWeight: 'bold' }}
@@ -586,42 +494,16 @@ function EventDetailScreen({ id }) {
                       {s.hasSeatMap ? '✓ Đã có sơ đồ ghế' : '⚠ Chưa có sơ đồ'}
                     </span>
 
-                    {/* Nút Upload Sơ đồ ghế */}
-                    {!s.hasSeatMap && (
-                      <label
-                        style={{
-                          padding: '6px 14px',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          backgroundColor: '#3b82f6',
-                          color: '#ffffff',
-                          cursor: uploadingId === s.id ? 'wait' : 'pointer',
-                          display: 'inline-block',
-                          opacity: uploadingId === s.id ? 0.6 : 1,
-                        }}
-                      >
-                        {uploadingId === s.id ? 'Đang tải...' : 'Tải lên Sơ đồ (JSON)'}
-                        <input
-                          type="file"
-                          accept=".json"
-                          style={{ display: 'none' }}
-                          onChange={(e) => handleUploadSeatMap(e, s.id)}
-                          disabled={uploadingId !== null}
-                        />
-                      </label>
-                    )}
-
                     {/* SCRUM-87: Nút Mở bán / Đóng bán */}
                     <button
                       onClick={() => handleToggleSales(s)}
-                      disabled={actionLoadingId === s.id || (!s.hasSeatMap && s.status !== SHOWTIME_STATUS.ON_SALE)}
+                      disabled={actionLoadingId === s.id}
                       style={{
                         padding: '6px 14px',
                         borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: '600',
-                        cursor: (actionLoadingId === s.id || (!s.hasSeatMap && s.status !== SHOWTIME_STATUS.ON_SALE)) ? 'not-allowed' : 'pointer',
+                        cursor: actionLoadingId === s.id ? 'not-allowed' : 'pointer',
                         border: 'none',
                         backgroundColor:
                           s.status === SHOWTIME_STATUS.ON_SALE
@@ -629,7 +511,7 @@ function EventDetailScreen({ id }) {
                             : '#16a34a',
                         color: '#ffffff',
                         transition: 'background-color 0.2s, opacity 0.2s',
-                        opacity: (actionLoadingId === s.id || (!s.hasSeatMap && s.status !== SHOWTIME_STATUS.ON_SALE)) ? 0.5 : 1,
+                        opacity: actionLoadingId === s.id ? 0.6 : 1,
                       }}
                     >
                       {actionLoadingId === s.id

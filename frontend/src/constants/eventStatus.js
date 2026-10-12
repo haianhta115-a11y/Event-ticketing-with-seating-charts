@@ -14,7 +14,7 @@ export const EVENT_STATUS_CONFIG = {
     },
   },
   [EVENT_STATUS.PUBLISHED]: {
-    label: 'Đã xuất bản',
+    label: 'Đang mở bán',
     style: {
       backgroundColor: '#dcfce7',
       color: '#15803d',

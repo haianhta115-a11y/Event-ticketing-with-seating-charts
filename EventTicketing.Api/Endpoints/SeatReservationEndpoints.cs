@@ -1,9 +1,6 @@
-using EventTicketing.Api.Security;
 using System.Security.Claims;
 using EventTicketing.Api.Services;
 using Microsoft.AspNetCore.Mvc;
-using EventTicketing.Api.Data;
-using Npgsql;
 
 namespace EventTicketing.Api.Endpoints;
 
@@ -13,42 +10,30 @@ public static class SeatReservationEndpoints
 {
     public static IEndpointRouteBuilder MapSeatReservationEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/showtimes/{showtimeId:int}/seats")
+        var group = app.MapGroup("/api/performances/{performanceId:int}/seats")
                        .WithTags("Seat Reservations");
-        group.AddEndpointFilter(async (context, next) =>
-        {
-            try { return await next(context); }
-            catch (SeatDataUnresolvedException)
-            {
-                return Results.Json(new { errorCode = "SEAT_DATA_UNRESOLVED", message = "Dữ liệu ghế cần được đối soát trước khi thực hiện thao tác." }, statusCode: 409);
-            }
-            catch (PostgresException error) when (error.SqlState is PostgresErrorCodes.UndefinedColumn or PostgresErrorCodes.UndefinedTable)
-            {
-                return Results.Json(new { errorCode = "SEAT_SCHEMA_NOT_READY", message = "Sơ đồ ghế chưa sẵn sàng; cần hoàn tất chuyển đổi dữ liệu đã được duyệt." }, statusCode: 503);
-            }
-        });
 
         // 1. Endpoint giữ chỗ 1 ghế (Seat Hold)
         group.MapPost("/{seatId:int}/hold", async (
-            int showtimeId,
+            int performanceId,
             int seatId,
             [FromBody] HoldSeatRequest? request,
             ISeatReservationService reservationService,
             ClaimsPrincipal user,
             CancellationToken ct) =>
         {
-            var userId = AccessPolicies.UserId(user);
+            var userId = ResolveUserId(request?.UserId, user);
             if (!userId.HasValue)
             {
                 return Results.Json(new
                 {
                     success = false,
-                    message = "Cần đăng nhập để giữ chỗ.",
+                    message = "Cần đăng nhập hoặc cung cấp userId để giữ chỗ.",
                     errorCode = "USER_REQUIRED"
                 }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
-            var result = await reservationService.HoldSeatAsync(showtimeId, seatId, userId.Value, ct);
+            var result = await reservationService.HoldSeatAsync(performanceId, seatId, userId.Value, ct);
 
             if (result.IsSuccess)
             {
@@ -109,24 +94,24 @@ public static class SeatReservationEndpoints
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status409Conflict)
-        .RequireAuthorization(AccessPolicies.SeatBooking);
+        .AllowAnonymous();
 
         // 2. Endpoint hủy giữ chỗ ghế (Release Seat Hold)
         group.MapDelete("/{seatId:int}/hold", async (
-            int showtimeId,
+            int performanceId,
             int seatId,
             [FromQuery] int? userIdQuery,
             ISeatReservationService reservationService,
             ClaimsPrincipal user,
             CancellationToken ct) =>
         {
-            var userId = AccessPolicies.UserId(user);
+            var userId = ResolveUserId(userIdQuery, user);
             if (!userId.HasValue)
             {
                 return Results.Unauthorized();
             }
 
-            var result = await reservationService.ReleaseSeatAsync(showtimeId, seatId, userId.Value, ct);
+            var result = await reservationService.ReleaseSeatAsync(performanceId, seatId, userId.Value, ct);
             if (result.IsSuccess)
             {
                 return Results.Ok(new { success = true, message = "Đã hủy giữ chỗ thành công." });
@@ -144,45 +129,45 @@ public static class SeatReservationEndpoints
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
-        .RequireAuthorization(AccessPolicies.SeatBooking);
+        .AllowAnonymous();
 
         // 3. Endpoint lấy sơ đồ ghế với trạng thái thời gian thực
         group.MapGet("/", async (
-            int showtimeId,
+            int performanceId,
             [FromQuery] int? currentUserId,
             ISeatReservationService reservationService,
             TimeProvider timeProvider,
             ClaimsPrincipal user,
             CancellationToken ct) =>
         {
-            var resolvedUserId = AccessPolicies.UserId(user);
-            var seats = await reservationService.GetSeatingChartStatusAsync(showtimeId, resolvedUserId, ct);
+            var resolvedUserId = ResolveUserId(currentUserId, user);
+            var seats = await reservationService.GetSeatingChartStatusAsync(performanceId, resolvedUserId, ct);
             return Results.Ok(new
             {
                 serverTimeUtc = timeProvider.GetUtcNow().UtcDateTime,
                 seats
             });
         })
-        .WithName("Getshowtimeseats")
+        .WithName("GetPerformanceSeats")
         .WithSummary("Lấy danh sách ghế và trạng thái thời gian thực của suất diễn")
         .Produces(StatusCodes.Status200OK)
         .AllowAnonymous();
 
         // 4. Endpoint lấy thông tin phiên giữ chỗ của user
         group.MapGet("/my-hold", async (
-            int showtimeId,
+            int performanceId,
             [FromQuery] int? currentUserId,
             ISeatReservationService reservationService,
             ClaimsPrincipal user,
             CancellationToken ct) =>
         {
-            var resolvedUserId = AccessPolicies.UserId(user);
+            var resolvedUserId = ResolveUserId(currentUserId, user);
             if (!resolvedUserId.HasValue)
             {
                 return Results.Unauthorized();
             }
 
-            var session = await reservationService.GetUserHoldSessionAsync(showtimeId, resolvedUserId.Value, ct);
+            var session = await reservationService.GetUserHoldSessionAsync(performanceId, resolvedUserId.Value, ct);
             if (session == null)
             {
                 return Results.NotFound(new { message = "Không có ghế nào đang được giữ." });
@@ -194,9 +179,24 @@ public static class SeatReservationEndpoints
         .WithSummary("Lấy thông tin phiên giữ chỗ hiện tại của người dùng")
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound)
-        .RequireAuthorization(AccessPolicies.SeatBooking);
+        .AllowAnonymous();
 
         return app;
     }
 
+    private static int? ResolveUserId(int? explicitUserId, ClaimsPrincipal user)
+    {
+        if (explicitUserId.HasValue && explicitUserId.Value > 0)
+        {
+            return explicitUserId.Value;
+        }
+
+        var idClaim = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!string.IsNullOrEmpty(idClaim) && int.TryParse(idClaim, out var parsedId))
+        {
+            return parsedId;
+        }
+
+        return null;
+    }
 }
