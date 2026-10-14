@@ -32,6 +32,7 @@ builder.Services.AddOpenApi(options =>
 // Validate the effective configuration after JSON, environment and command-line overrides.
 var dependencies = DependencyConfiguration.Read(builder.Configuration, builder.Environment.EnvironmentName);
 builder.Services.AddSingleton(dependencies);
+builder.Services.AddSingleton<RedisKeyScope>();
 builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(dependencies.Postgres));
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(dependencies.Redis));
 builder.Services.AddHealthChecks().AddCheck<DependencyHealthCheck>("dependencies", tags: ["ready"]);
@@ -41,6 +42,13 @@ builder.Services.AddScoped<ISeatingChartValidator, SeatingChartValidator>();
 builder.Services.AddScoped<EventTicketing.Api.SeatMaps.SeatMapImportService>();
 builder.Services.AddScoped<EventTicketing.Api.SeatMaps.SeatingChartPreparation>();
 builder.Services.AddScoped<ISeatReservationService, SeatReservationService>();
+builder.Services.AddOptions<SeatHoldOptions>()
+    .Bind(builder.Configuration.GetSection(SeatHoldOptions.SectionName))
+    .Validate(options => options.DurationMinutes is > 0 and <= 1440,
+        "SeatHolds:DurationMinutes must be between 1 and 1440 minutes.")
+    .ValidateOnStart();
+builder.Services.AddScoped<SalesStatusService>();
+builder.Services.AddScoped<ExpiredSeatHoldCleanup>();
 builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddActivationEmail(builder.Configuration, builder.Environment);
 // No background database writes by default in local development or tests.
@@ -95,13 +103,14 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
     {
-        policy
-            .WithOrigins(
+        var origins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [
                 "https://event-ticketing-with-seating-charts-1.onrender.com",
                 "https://event-ticketing-with-seating-charts.onrender.com",
                 "http://localhost:5173",
                 "http://localhost:3000"
-            )
+            ];
+        policy
+            .WithOrigins(origins)
             .AllowAnyHeader()
             .AllowAnyMethod();
     });

@@ -1,17 +1,19 @@
 using System.Security.Cryptography;
 using System.Text;
 using StackExchange.Redis;
+using EventTicketing.Api.Configuration;
 
 namespace EventTicketing.Api.Security;
 
 // Redis owns both counters and TTLs, so lockouts survive application restarts.
-public sealed class LoginAttemptLimiter(IConnectionMultiplexer redis)
+public sealed class LoginAttemptLimiter(IConnectionMultiplexer redis, RedisKeyScope? scope = null)
 {
-    private static RedisKey[] Keys(string account, string ip) =>
+    private RedisKey[] Keys(string account, string ip) =>
     [
-        $"attempts:{account}", $"lockout:{account}",
-        $"login:ip:attempts:{Hash(ip)}", $"login:ip:lockout:{Hash(ip)}"
+        Key($"attempts:{account}"), Key($"lockout:{account}"),
+        Key($"login:ip:attempts:{Hash(ip)}"), Key($"login:ip:lockout:{Hash(ip)}")
     ];
+    private RedisKey Key(string value) => scope?.Key(value) ?? value;
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
     public async Task<int> RemainingSecondsAsync(string account, string ip)

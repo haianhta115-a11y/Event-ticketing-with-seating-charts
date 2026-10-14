@@ -17,15 +17,23 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using EventTicketing.Api.Data;
+using Npgsql;
 
 namespace EventTicketing.Tests.Infrastructure;
 
 internal sealed class LocalApplicationFactory(LocalPostgresDatabase database) : WebApplicationFactory<Program>
 {
     public CapturedLogs Logs { get; } = new();
+    public string RedisKeyPrefix => "test_" + new NpgsqlConnectionStringBuilder(database.ConnectionString).Database + ":";
+    public string RedisKey(string key) => RedisKeyPrefix + key;
     public FakeEmailDelivery Email { get; } = new();
     public TestClock Clock { get; } = new();
     public bool UseTestClock { get; set; }
+    public bool EnableCleanup { get; set; }
+    public int? HoldDurationMinutes { get; set; }
+    public int? LoadTestPoolSize { get; set; }
+    public string LoadTestConnection => new NpgsqlConnectionStringBuilder(database.ConnectionString)
+    { Pooling = true, MaxPoolSize = LoadTestPoolSize ?? 32 }.ConnectionString;
     public IInterceptor[] DbInterceptors { get; set; } = [];
     private readonly string signingKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
     private readonly IPAddress peerAddress = IPAddress.Parse($"127.{Random.Shared.Next(1, 255)}.{Random.Shared.Next(1, 255)}.{Random.Shared.Next(1, 255)}");
@@ -48,12 +56,14 @@ internal sealed class LocalApplicationFactory(LocalPostgresDatabase database) : 
         var dependencies = LocalPostgresDatabase.VerifyDependencies();
         return new Dictionary<string, string?>
         {
-            ["ConnectionStrings:DefaultConnection"] = database.ConnectionString,
+            ["ConnectionStrings:DefaultConnection"] = LoadTestPoolSize.HasValue ? LoadTestConnection : database.ConnectionString,
             ["Redis:ConnectionString"] = dependencies.Redis.ToString(),
+            ["Redis:KeyPrefix"] = RedisKeyPrefix,
             ["Jwt:Key"] = signingKey,
             ["Email:Mode"] = "Disabled",
+            ["SeatHolds:DurationMinutes"] = (HoldDurationMinutes ?? 10).ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["Email:ActivationUrl"] = "http://localhost:5173/activate",
-            ["BackgroundJobs:SeatHoldCleanupEnabled"] = "false"
+            ["BackgroundJobs:SeatHoldCleanupEnabled"] = EnableCleanup ? "true" : "false"
         };
     }
 

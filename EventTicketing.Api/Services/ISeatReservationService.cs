@@ -43,7 +43,8 @@ public sealed record SeatDisplayDto(
     int? Y,
     string DisplayStatus,
     DateTime? HeldUntilUtc,
-    bool CanSelect);
+    bool CanSelect,
+    string? Category = null);
 
 public sealed record UserHoldSessionDto(
     int PerformanceId,
@@ -65,6 +66,7 @@ public sealed class HoldSeatResult
     public string? ErrorMessage { get; private init; }
     public HoldFailureReason? FailureReason { get; private init; }
     public Seat? CurrentSeat { get; private init; }
+    public IReadOnlyList<int> RejectedSeatIds { get; private init; } = Array.Empty<int>();
 
     public static HoldSeatResult Success(
         int seatId,
@@ -87,14 +89,16 @@ public sealed class HoldSeatResult
         string errorMessage,
         HoldFailureReason reason,
         DateTime serverTimeUtc,
-        Seat? currentSeat = null) =>
+        Seat? currentSeat = null,
+        IReadOnlyList<int>? rejectedSeatIds = null) =>
         new()
         {
             IsSuccess = false,
             ErrorMessage = errorMessage,
             FailureReason = reason,
             ServerTimeUtc = serverTimeUtc,
-            CurrentSeat = currentSeat
+            CurrentSeat = currentSeat,
+            RejectedSeatIds = rejectedSeatIds ?? (currentSeat == null ? Array.Empty<int>() : [currentSeat.Id])
         };
 }
 

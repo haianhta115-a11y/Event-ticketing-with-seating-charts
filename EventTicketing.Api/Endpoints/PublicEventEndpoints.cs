@@ -5,6 +5,8 @@ using EventTicketing.Api.Entities;
 using EventTicketing.Api.Models.Events;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
+using Npgsql;
+using EventTicketing.Api.Configuration;
 
 namespace EventTicketing.Api.Endpoints;
 
@@ -21,6 +23,7 @@ public static class PublicEventEndpoints
             string? cursor,
             AppDbContext db,
             IConnectionMultiplexer redis,
+            RedisKeyScope scope,
             TimeProvider timeProvider,
             CancellationToken ct) =>
         {
@@ -30,7 +33,15 @@ public static class PublicEventEndpoints
 
             var now = timeProvider.GetUtcNow().UtcDateTime;
 
-            var cacheKey = $"events:open:v2:limit={take}:cursor={cursor ?? "none"}";
+            // Transactional audit revision makes publish/close effective immediately;
+            // database scope prevents Redis cache leakage across isolated tenants/fixtures.
+            long revision;
+            try { revision = await db.SalesTransitions.MaxAsync(a => (long?)a.Id, ct) ?? 0; }
+            catch (PostgresException error) when (error.SqlState == PostgresErrorCodes.UndefinedTable)
+            {
+                return Results.Json(new { errorCode = "SALES_SCHEMA_NOT_READY", message = "Schema mở bán chưa sẵn sàng." }, statusCode: 503);
+            }
+            var cacheKey = scope.Key($"events:open:v3:{db.Database.GetDbConnection().Database}:revision={revision}:limit={take}:cursor={cursor ?? "none"}");
             IDatabase? redisDb = null;
             try
             {
@@ -41,7 +52,9 @@ public static class PublicEventEndpoints
                     var cachedResponse = JsonSerializer.Deserialize<PublicEventListResponse>(
                         cachedStr.ToString(),
                         new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
-                    if (cachedResponse != null)
+                    // A 30-second cache must never keep an already-started nearest showtime
+                    // visible. Requery to find the next eligible showtime/page when time passes.
+                    if (cachedResponse != null && cachedResponse.Items.All(e => e.NearestShowtime.StartTime > now))
                         return Results.Ok(cachedResponse);
                 }
             }
@@ -59,10 +72,12 @@ public static class PublicEventEndpoints
                 {
                     var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
                     var parts = decoded.Split('_');
-                    if (parts.Length == 2)
+                    if (parts.Length == 2 && long.TryParse(parts[0], out var parsedTicks)
+                        && parsedTicks > 0 && parsedTicks <= DateTime.MaxValue.Ticks
+                        && int.TryParse(parts[1], out var parsedId) && parsedId > 0)
                     {
-                        long.TryParse(parts[0], out cursorTicks);
-                        int.TryParse(parts[1], out cursorEventId);
+                        cursorTicks = parsedTicks;
+                        cursorEventId = parsedId;
                     }
                 }
                 catch

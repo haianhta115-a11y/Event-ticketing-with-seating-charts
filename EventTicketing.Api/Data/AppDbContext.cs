@@ -18,9 +18,20 @@ public class AppDbContext : DbContext
 
     public DbSet<Event> Events { get; set; }
     public DbSet<Showtime> Showtimes { get; set; }
+    public DbSet<SalesTransition> SalesTransitions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<SalesTransition>(entity =>
+        {
+            entity.ToTable("sales_transitions");
+            entity.Property(e => e.FromStatus).HasMaxLength(20);
+            entity.Property(e => e.ToStatus).HasMaxLength(20);
+            entity.HasIndex(e => new { e.EventId, e.OccurredAtUtc });
+            entity.HasOne<Event>().WithMany().HasForeignKey(e => e.EventId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Showtime>().WithMany().HasForeignKey(e => e.ShowtimeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.ActorUserId).OnDelete(DeleteBehavior.Restrict);
+        });
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.Entity<AccountActivation>(entity =>

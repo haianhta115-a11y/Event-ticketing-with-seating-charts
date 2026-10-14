@@ -1,59 +1,74 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getShowtimeSeats, holdSeat } from '../api/seatsApi';
+import { useHoldRecovery } from '../events/useHoldRecovery';
+import { toggleBatch } from '../events/batchSelection';
+import { seatMapGeometry, computeFitScale, initialSeatScale, maximumSeatScale, zoomAtPoint } from '../events/seatMapGeometry';
+import { categoryPalette } from '../events/seatImport';
+import { seatPresentation, rowLabels, existingPrice, blockedSeatMessage } from '../events/seatPresentation';
 
 /**
  * Tối ưu hóa từng ghế bằng React.memo để tránh render lại toàn bộ hàng nghìn ghế.
  * Không gắn onClick riêng cho từng ghế để đạt hiệu năng cao nhất (dùng event delegation).
  */
-const SeatItem = React.memo(function SeatItem({ seat, pixelX, pixelY, size, isSelected, onClick }) {
+const SeatItem = React.memo(function SeatItem({ seat, pixelX, pixelY, size, categoryColor, isSelected, isPending, showLabel, onClick }) {
+  const visual = seatPresentation(seat, categoryColor, isPending, isSelected);
   const isAvailable = seat.displayStatus === 'Available';
-  const isHeld = seat.displayStatus === 'HeldByMe' || seat.displayStatus === 'HeldByOther';
-
-  // Màu sắc và ký hiệu tường minh cho 3 trạng thái
-  const fillColor = isAvailable ? '#16a34a' : isHeld ? '#d97706' : '#4b5563';
-  const strokeColor = isSelected ? '#38bdf8' : isAvailable ? '#15803d' : isHeld ? '#b45309' : '#374151';
-  const symbol = isAvailable ? '✓' : isHeld ? '⏳' : '✕';
-  const statusText = isAvailable ? 'Trống' : isHeld ? 'Đang có người giữ' : 'Đã bán';
-  const label = `Khu ${seat.section}, hàng ${seat.row}, ghế ${seat.number} - ${statusText}`;
-
-  const fontSize = Math.max(9, Math.round(size * 0.42));
+  const number = String(seat.number);
+  const fontSize = Math.min(16, 38 / Math.max(1, number.length));
+  const select = () => {
+    if (visual.selectable) onClick?.(seat);
+  };
 
   return (
     <g
       data-seat-id={seat.id}
-      tabIndex={0}
-      aria-label={label}
+      data-seat-status={seat.displayStatus}
+      data-category={seat.category}
+      data-pending-selection={visual.queued ? 'true' : 'false'}
+      tabIndex={visual.selectable ? 0 : -1}
+      aria-disabled={!visual.selectable}
+      aria-label={visual.label}
       role="button"
-      style={{ outline: 'none', cursor: 'pointer' }}
-      onClick={() => { if ((seat.displayStatus === 'Available' || seat.displayStatus === 'HeldByMe' || seat.displayStatus === 'HeldByOther') && onClick) onClick(seat); }}
+      style={{ cursor: visual.selectable ? 'pointer' : 'not-allowed' }}
+      // Pointer-up hit testing is authoritative. A touch-generated click can target a
+      // different seat after the detail panel changes scroll anchoring. Do not select twice.
+      onClick={event => { if (event.detail === 0) select(); }}
+      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } }}
     >
-      <title>{label}</title>
+      <title>{`${visual.label} — ${seat.category || 'Chưa có hạng ghế'}`}</title>
       <rect
         data-seat-id={seat.id}
         x={pixelX}
         y={pixelY}
         width={size}
         height={size}
-        rx={Math.max(2, Math.round(size * 0.18))}
-        fill={fillColor}
-        stroke={strokeColor}
-        strokeWidth={isSelected ? '2.5' : '1.2'}
-        style={{ cursor: 'pointer' }}
+        rx={4}
+        fill={visual.fill}
+        stroke={visual.stroke}
+        strokeWidth={visual.queued || isSelected ? '2.5' : '1.2'}
+        strokeDasharray={visual.queued ? '3 2' : undefined}
       />
       <text
-        x={pixelX + size / 2}
-        y={pixelY + size / 2 + (isHeld ? fontSize * 0.35 : fontSize * 0.38)}
+        x={pixelX + (showLabel && isAvailable ? size * 0.82 : size / 2)}
+        y={pixelY + (showLabel ? size * 0.32 : size * 0.66)}
         textAnchor="middle"
-        fill="#ffffff"
-        fontSize={fontSize}
+        fill={visual.ink}
+        fontSize={showLabel && isAvailable ? 7 : showLabel ? 11 : 16}
         fontWeight="bold"
-        style={{ userSelect: 'none', cursor: 'pointer' }}
+        pointerEvents="none"
       >
-        {symbol}
+        {visual.icon}
       </text>
+      {showLabel && <text data-seat-row="true" x={pixelX + 3} y={pixelY + 8}
+        fill={visual.ink} fontSize="6.5" fontWeight="600" pointerEvents="none">
+        {String(seat.row).length > 4 ? `${String(seat.row).slice(0, 3)}…` : seat.row}
+      </text>}
+      {showLabel && <text data-seat-number="true" x={pixelX + size / 2}
+        y={pixelY + (isAvailable ? size * 0.70 : size * 0.82)} textAnchor="middle"
+        fill={visual.ink} fontSize={isAvailable ? fontSize : Math.min(12, fontSize)} fontWeight="bold"
+        pointerEvents="none">{number}</text>}
       {/* Viền nổi bật cho ghế đang được xem */}
-      {isSelected && (
+      {isSelected && visual.selectable && (
         <rect
           x={pixelX - 3}
           y={pixelY - 3}
@@ -70,17 +85,6 @@ const SeatItem = React.memo(function SeatItem({ seat, pixelX, pixelY, size, isSe
     </g>
   );
 });
-
-/**
- * Tính toán tỷ lệ fitScale để sơ đồ vừa khít khung nhìn
- */
-function computeFitScale(containerWidth, containerHeight, contentWidth, contentHeight) {
-  const padding = 24;
-  const availW = Math.max(100, containerWidth - padding * 2);
-  const availH = Math.max(100, containerHeight - padding * 2);
-
-  return Math.min(availW / contentWidth, availH / contentHeight);
-}
 
 /**
  * Giới hạn vị trí kéo:
@@ -118,103 +122,36 @@ function clampTransform(tx, ty, scale, containerWidth, containerHeight, contentW
 
 export default function SeatMap() {
   const { id } = useParams();
+  return <SeatMapScreen key={id} id={id} />;
+}
+
+function SeatMapScreen({ id }) {
   const navigate = useNavigate();
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [seatData, setSeatData] = useState(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  // Ghế đang được bấm xem thông tin
-  const [selectedSeat, setSelectedSeat] = useState(null);
-
-  // Trạng thái cho Payment Modal
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-
-  // Trạng thái giữ chỗ
-  const [isHolding, setIsHolding] = useState(false);
-  const [currentTime, setCurrentTime] = useState(() => Date.now());
-  const [holdError, setHoldError] = useState(null);
-
+  const recovery = useHoldRecovery(id);
+  const { data: seatData, loading, error, session, remainingSeconds, pending: isHolding,
+    notice: holdError, dismissNotice, refresh, confirmHold, confirmBatch, confirmRelease } = recovery;
+  const [batchIds, setBatchIds] = useState([]);
+  const pendingIds = useMemo(() => new Set(batchIds), [batchIds]);
+  const [interactionNotice, setInteractionNotice] = useState(null);
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      setCurrentTime(now);
-
-      setSeatData(currentData => {
-        if (!currentData || !currentData.seats) return currentData;
-        let changed = false;
-        const newSeats = currentData.seats.map(s => {
-          if ((s.displayStatus === 'HeldByMe' || s.displayStatus === 'HeldByOther') && s.heldUntilUtc) {
-            const heldUntil = new Date(s.heldUntilUtc + (s.heldUntilUtc.endsWith('Z') ? '' : 'Z')).getTime();
-            if (heldUntil <= now) {
-              changed = true;
-              return { ...s, displayStatus: 'Available', heldUntilUtc: null };
-            }
-          }
-          return s;
-        });
-        return changed ? { ...currentData, seats: newSeats } : currentData;
-      });
-
-      setSelectedSeat(currentSeat => {
-        if (currentSeat && (currentSeat.displayStatus === 'HeldByMe' || currentSeat.displayStatus === 'HeldByOther') && currentSeat.heldUntilUtc) {
-          const heldUntil = new Date(currentSeat.heldUntilUtc + (currentSeat.heldUntilUtc.endsWith('Z') ? '' : 'Z')).getTime();
-          if (heldUntil <= now) {
-            return { ...currentSeat, displayStatus: 'Available', heldUntilUtc: null };
-          }
-        }
-        return currentSeat;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
+    const clear = () => { setBatchIds([]); setInteractionNotice(null); };
+    window.addEventListener('sessionchange', clear); window.addEventListener('storage', clear);
+    return () => { window.removeEventListener('sessionchange', clear); window.removeEventListener('storage', clear); };
   }, []);
-
-
-
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedSeatId, setSelectedSeatId] = useState(null);
+  const selectedSeat = useMemo(() => seatData?.seats?.find(s => s.id === selectedSeatId) ?? null,
+    [seatData, selectedSeatId]);
+  const setSelectedSeat = useCallback(seat => setSelectedSeatId(seat?.id ?? null), []);
+  const handleSeatClick = useCallback(seat => { setInteractionNotice(null); dismissNotice(); setSelectedSeat(seat); }, [dismissNotice, setSelectedSeat]);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const countdown = `${Math.floor(remainingSeconds / 60).toString().padStart(2, '0')}:${(remainingSeconds % 60).toString().padStart(2, '0')}`;
   const handleConfirmHold = async () => {
-    if (!selectedSeat || selectedSeat.displayStatus !== 'Available') return;
-
-    setIsHolding(true);
-    setHoldError(null);
-
-    try {
-      // Call actual API
-      const response = await holdSeat(id, selectedSeat.id, 1);
-
-      const heldUntilUtc = response?.heldUntilUtc || new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-      setSeatData(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          seats: prev.seats.map(s => s.id === selectedSeat.id ? { ...s, displayStatus: 'HeldByMe', heldUntilUtc } : s)
-        };
-      });
-      setSelectedSeat(prev => ({ ...prev, displayStatus: 'HeldByMe', heldUntilUtc }));
-    } catch (err) {
-      console.error('Lỗi giữ ghế:', err);
-      if (err.response?.status === 400 || err.response?.status === 409) {
-        setHoldError('Ghế này hiện không thể giữ (có thể đã bị người khác chọn).');
-        // AUTO-REFRESH ON CONFLICT: Instantly fetch updated seats to reflect reality
-        getShowtimeSeats(id).then(res => {
-          setSeatData(res);
-          if (res?.seats) {
-            const updatedSeat = res.seats.find(s => s.id === selectedSeat.id);
-            if (updatedSeat) {
-              setSelectedSeat(updatedSeat);
-            }
-          }
-        }).catch(console.error);
-      } else {
-        setHoldError('Có lỗi xảy ra khi giữ ghế. Vui lòng thử lại!');
-      }
-    } finally {
-      setIsHolding(false);
-    }
+    if (selectedSeat?.displayStatus === 'Available') await confirmHold(selectedSeat.id);
   };
-
+  const handleConfirmBatch = async () => {
+    if (batchIds.length && await confirmBatch(batchIds)) setBatchIds([]);
+  };
 
   const [zoomLevel, setZoomLevel] = useState(1);
 
@@ -223,9 +160,12 @@ export default function SeatMap() {
   const contentGroupRef = useRef(null);
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
   const fitScaleRef = useRef(1);
+  const fitModeRef = useRef(true);
   const rafIdRef = useRef(null);
   const animRafRef = useRef(null);
   const wheelDebounceRef = useRef(null);
+  const geometryKey = JSON.stringify(seatData?.seats?.map(({ id, x, y }) => ({ id, x, y })) ?? []);
+  const geometry = useMemo(() => seatMapGeometry(JSON.parse(geometryKey)), [geometryKey]);
 
   // Quản lý Pointer Events
   const activePointers = useRef(new Map());
@@ -239,64 +179,21 @@ export default function SeatMap() {
   const pinchDiagramMid = useRef({ x: 0, y: 0 });
 
   const fetchSeats = useCallback(async (isRefresh = false) => {
-    if (isRefresh) {
-      setIsRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    setError(null);
-
-    try {
-      const res = await getShowtimeSeats(id);
-      setSeatData(res);
-      setSelectedSeat(null);
-    } catch (err) {
-      setError(err?.message || 'Không thể tải sơ đồ ghế từ máy chủ');
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    let ignore = false;
-
-    getShowtimeSeats(id)
-      .then((res) => {
-        if (!ignore) {
-          setSeatData(res);
-        }
-      })
-      .catch((err) => {
-        if (!ignore) {
-          setError(err?.message || 'Không thể tải sơ đồ ghế từ máy chủ');
-        }
-      })
-      .finally(() => {
-        if (!ignore) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      ignore = true;
-    };
-  }, [id]);
+    setIsRefreshing(isRefresh);
+    try { await refresh(); }
+    finally { setIsRefreshing(false); }
+  }, [refresh]);
 
   // Tối ưu hóa tính toán layout và thống kê số lượng ghế bằng useMemo
   const layout = useMemo(() => {
     const seats = seatData?.seats;
-    if (!seats || seats.length === 0) {
+    if (!seats || seats.length === 0 || seats.some(s => !Number.isFinite(s.x) || !Number.isFinite(s.y))) {
       return null;
     }
 
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minY = Infinity;
-    let maxY = -Infinity;
-
     let availableCount = 0;
     let heldCount = 0;
+    let mineCount = 0;
     let soldCount = 0;
     const seatMapById = new Map();
 
@@ -304,55 +201,39 @@ export default function SeatMap() {
       const s = seats[i];
       seatMapById.set(s.id, s);
 
-      if (s.x < minX) minX = s.x;
-      if (s.x > maxX) maxX = s.x;
-      if (s.y < minY) minY = s.y;
-      if (s.y > maxY) maxY = s.y;
-
       if (s.displayStatus === 'Available') availableCount++;
-      else if (s.displayStatus === 'HeldByMe' || s.displayStatus === 'HeldByOther') heldCount++;
+      else if (s.displayStatus === 'HeldByMe' || s.displayStatus === 'HeldByOther') {
+        heldCount++;
+        if (s.displayStatus === 'HeldByMe') mineCount++;
+      }
       else if (s.displayStatus === 'Sold') soldCount++;
     }
 
-    const cols = maxX - minX + 1;
-    const rows = maxY - minY + 1;
-
-    // Tự động scale kích thước theo mật độ ghế (hỗ trợ hiển thị mượt cho 2000 ghế)
-    const seatSize = cols > 30 ? 22 : 32;
-    const gap = cols > 30 ? 6 : 8;
-    const paddingX = 40;
-    const paddingY = 40;
-    const stageHeight = 60;
-
-    const width = Math.max(650, paddingX * 2 + cols * (seatSize + gap) - gap);
-    const height = paddingY * 2 + stageHeight + rows * (seatSize + gap) - gap;
-
-    const mappedSeats = seats.map((s) => ({
-      ...s,
-      pixelX: paddingX + (s.x - minX) * (seatSize + gap),
-      pixelY: paddingY + stageHeight + (s.y - minY) * (seatSize + gap),
-      size: seatSize,
-    }));
+    if (!geometry) return null;
+    const mappedSeats = seats.map(s => ({ ...s, ...geometry.positions.get(s.id) }));
+    const categories = categoryPalette(seats.map(s => s.category || 'Chưa có hạng ghế'));
 
     return {
-      width,
-      height,
-      paddingX,
-      stageHeight,
-      baseSeatSize: seatSize,
+      ...geometry,
       counts: {
         total: seats.length,
         available: availableCount,
         held: heldCount,
+        mine: mineCount,
+        other: heldCount - mineCount,
         sold: soldCount,
       },
       mappedSeats,
       seatMapById,
+      categories,
+      categoryColors: new Map(categories.map(c => [c.name, c.color])),
+      rowLabels: rowLabels(mappedSeats, geometry.paddingX),
     };
-  }, [seatData]);
+  }, [seatData, geometry]);
 
   // Hoạt ảnh chuyển đổi mượt khoảng 150ms cho các thao tác bấm nút (+, −, Đặt lại)
   const animateTransformTo = useCallback((targetTransform, duration = 150) => {
+    if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     if (animRafRef.current) {
       cancelAnimationFrame(animRafRef.current);
       animRafRef.current = null;
@@ -397,19 +278,25 @@ export default function SeatMap() {
 
   // Tự động thu vừa khít khung nhìn và căn giữa khi tải xong sơ đồ hoặc đổi layout
   useEffect(() => {
-    if (!layout || !containerRef.current) return;
-
-    const raf = requestAnimationFrame(() => {
+    if (!geometry || !containerRef.current) return;
+    const container = containerRef.current;
+    let initialized = false;
+    fitModeRef.current = geometry.positions.size > 200;
+    const resize = () => {
       if (!containerRef.current) return;
       const cw = containerRef.current.clientWidth || 800;
       const ch = containerRef.current.clientHeight || 500;
-      const fitScale = computeFitScale(cw, ch, layout.width, layout.height);
+      const fitScale = computeFitScale(cw, ch, geometry.width, geometry.height);
 
       fitScaleRef.current = fitScale;
 
-      const fitX = (cw - layout.width * fitScale) / 2;
-      const fitY = (ch - layout.height * fitScale) / 2;
-      const fit = { scale: fitScale, x: fitX, y: fitY };
+      const scale = initialized ? (fitModeRef.current ? fitScale : Math.max(fitScale, transformRef.current.scale)) : initialSeatScale(fitScale, geometry.positions.size);
+      const fit = initialized
+        ? clampTransform(transformRef.current.x, transformRef.current.y, scale, cw, ch, geometry.width, geometry.height)
+        : { scale, x: (cw - geometry.width * scale) / 2, y: (ch - geometry.height * scale) / 2 };
+      initialized = true;
+      if (animRafRef.current) cancelAnimationFrame(animRafRef.current);
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
 
       transformRef.current = fit;
 
@@ -420,16 +307,21 @@ export default function SeatMap() {
         );
       }
       setZoomLevel(fit.scale);
-    });
+    };
+    const raf = requestAnimationFrame(resize);
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
 
     return () => {
       cancelAnimationFrame(raf);
+      observer.disconnect();
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
       if (animRafRef.current) {
         cancelAnimationFrame(animRafRef.current);
         animRafRef.current = null;
       }
     };
-  }, [layout]);
+  }, [geometry]);
 
   // Xử lý zoom bằng lăn chuột (Wheel) trên máy tính dùng hệ số mượt Math.exp(-deltaY * 0.0015)
   useEffect(() => {
@@ -446,29 +338,28 @@ export default function SeatMap() {
       }
 
       const rect = container.getBoundingClientRect();
-      const pivotX = e.clientX - rect.left;
-      const pivotY = e.clientY - rect.top;
+      const pivotX = e.clientX - rect.left - container.clientLeft;
+      const pivotY = e.clientY - rect.top - container.clientTop;
 
       // Hệ số zoom mượt liên tục theo deltaY
       const factor = Math.exp(-e.deltaY * 0.0015);
 
       const current = transformRef.current;
       const minScale = fitScaleRef.current;
-      const maxScale = fitScaleRef.current * 8;
+      const maxScale = maximumSeatScale(fitScaleRef.current);
 
       const targetScale = Math.max(minScale, Math.min(maxScale, current.scale * factor));
       if (targetScale === current.scale) return;
+      fitModeRef.current = targetScale === minScale;
 
-      const ratio = targetScale / current.scale;
-      const newX = pivotX - (pivotX - current.x) * ratio;
-      const newY = pivotY - (pivotY - current.y) * ratio;
+      const anchored = zoomAtPoint(current, targetScale, pivotX, pivotY);
 
       const clamped = clampTransform(
-        newX,
-        newY,
+        anchored.x,
+        anchored.y,
         targetScale,
-        rect.width,
-        rect.height,
+        container.clientWidth,
+        container.clientHeight,
         layout.width,
         layout.height
       );
@@ -510,15 +401,18 @@ export default function SeatMap() {
       const seatId = parseInt(seatElem.getAttribute('data-seat-id'), 10);
       const seat = layout.seatMapById.get(seatId);
       if (seat) {
-        if (seat.displayStatus === 'Available' || seat.displayStatus === 'HeldByMe' || seat.displayStatus === 'HeldByOther') {
-          setSelectedSeat(seat);
+        if (seatPresentation(seat).selectable) {
+          handleSeatClick(seat);
+        } else {
+          setInteractionNotice(blockedSeatMessage(seat.displayStatus));
+          void refresh(); // Read authoritative availability; never POST for a disabled seat.
         }
         return;
       }
     }
     // Bấm vào chỗ trống (nền SVG) để bỏ chọn/ẩn khung
     setSelectedSeat(null);
-  }, [layout]);
+  }, [layout, setSelectedSeat, handleSeatClick, refresh]);
 
   // Xử lý Pointer Down (bắt đầu kéo hoặc pinch)
   const handlePointerDown = (e) => {
@@ -530,10 +424,14 @@ export default function SeatMap() {
       animRafRef.current = null;
     }
 
+    if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+    const { x, y, scale } = transformRef.current;
+    contentGroupRef.current?.setAttribute('transform', `translate(${x}, ${y}) scale(${scale})`);
+
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     try {
-      // e.currentTarget.setPointerCapture(e.pointerId);
+      e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
       // Bỏ qua lỗi nếu không thể capture con trỏ
     }
@@ -550,8 +448,8 @@ export default function SeatMap() {
       pinchStartScale.current = transformRef.current.scale;
 
       const rect = containerRef.current.getBoundingClientRect();
-      const screenMidX = (pts[0].x + pts[1].x) / 2 - rect.left;
-      const screenMidY = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const screenMidX = (pts[0].x + pts[1].x) / 2 - rect.left - containerRef.current.clientLeft;
+      const screenMidY = (pts[0].y + pts[1].y) / 2 - rect.top - containerRef.current.clientTop;
 
       // Điểm giữa hai ngón theo tọa độ sơ đồ
       pinchDiagramMid.current = {
@@ -568,10 +466,10 @@ export default function SeatMap() {
 
     if (!containerRef.current || !layout) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const cw = rect.width;
-    const ch = rect.height;
+    const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
     const minScale = fitScaleRef.current;
-    const maxScale = fitScaleRef.current * 8;
+    const maxScale = maximumSeatScale(fitScaleRef.current);
 
     if (activePointers.current.size === 1) {
       const dx = e.clientX - pointerStartPos.current.x;
@@ -616,9 +514,10 @@ export default function SeatMap() {
         // scale = startScale * (currentDistance / startDistance), sau đó clamp
         const rawScale = pinchStartScale.current * (currentDist / pinchStartDist.current);
         const newScale = Math.max(minScale, Math.min(maxScale, rawScale));
+        fitModeRef.current = newScale === minScale;
 
-        const currentScreenMidX = (pts[0].x + pts[1].x) / 2 - rect.left;
-        const currentScreenMidY = (pts[0].y + pts[1].y) / 2 - rect.top;
+        const currentScreenMidX = (pts[0].x + pts[1].x) / 2 - rect.left - containerRef.current.clientLeft;
+        const currentScreenMidY = (pts[0].y + pts[1].y) / 2 - rect.top - containerRef.current.clientTop;
 
         // Giữ điểm giữa hai ngón cố định trên màn hình (điều chỉnh translate theo zoom quanh điểm)
         const newTx = currentScreenMidX - pinchDiagramMid.current.x * newScale;
@@ -650,8 +549,11 @@ export default function SeatMap() {
 
   // Xử lý Pointer Up (kết thúc thao tác)
   const handlePointerUp = (e) => {
+    // Toolbar gestures were never registered as map pointers. Their bubbling up must
+    // not clear the focused seat/reflow the page before the button's synthesized click.
+    if (!activePointers.current.has(e.pointerId)) return;
     try {
-      // e.currentTarget.releasePointerCapture(e.pointerId);
+      e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
       // Bỏ qua lỗi nếu con trỏ đã được giải phóng
     }
@@ -673,12 +575,19 @@ export default function SeatMap() {
   };
 
   const handlePointerCancel = (e) => {
+    if (!activePointers.current.has(e.pointerId)) return;
     try {
-      // e.currentTarget.releasePointerCapture(e.pointerId);
+      e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
       // Bỏ qua lỗi nếu con trỏ đã được giải phóng
     }
     activePointers.current.delete(e.pointerId);
+    if (activePointers.current.size === 1) {
+      const remaining = Array.from(activePointers.current.values())[0];
+      pointerStartPos.current = { x: remaining.x, y: remaining.y };
+      dragStartTransform.current = { ...transformRef.current };
+      isDraggingRef.current = true;
+    }
     if (activePointers.current.size === 0) {
       isDraggingRef.current = false;
       setZoomLevel(transformRef.current.scale);
@@ -688,32 +597,28 @@ export default function SeatMap() {
   // Nút "+": zoom quanh TÂM của khung nhìn, nhân 1.25, hoạt ảnh 150ms
   const handleZoomIn = () => {
     if (!containerRef.current || !layout) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const cw = rect.width;
-    const ch = rect.height;
+    const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
     const pivotX = cw / 2;
     const pivotY = ch / 2;
 
     const current = transformRef.current;
-    const maxScale = fitScaleRef.current * 8;
+    const maxScale = maximumSeatScale(fitScaleRef.current);
 
     const targetScale = Math.min(maxScale, current.scale * 1.25);
     if (targetScale === current.scale) return;
+    fitModeRef.current = false;
 
-    const ratio = targetScale / current.scale;
-    const targetX = pivotX - (pivotX - current.x) * ratio;
-    const targetY = pivotY - (pivotY - current.y) * ratio;
-
-    const clamped = clampTransform(targetX, targetY, targetScale, cw, ch, layout.width, layout.height);
+    const anchored = zoomAtPoint(current, targetScale, pivotX, pivotY);
+    const clamped = clampTransform(anchored.x, anchored.y, targetScale, cw, ch, layout.width, layout.height);
     animateTransformTo(clamped, 150);
   };
 
   // Nút "−": zoom quanh TÂM của khung nhìn, chia 1.25, hoạt ảnh 150ms
   const handleZoomOut = () => {
     if (!containerRef.current || !layout) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const cw = rect.width;
-    const ch = rect.height;
+    const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
     const pivotX = cw / 2;
     const pivotY = ch / 2;
 
@@ -722,21 +627,19 @@ export default function SeatMap() {
 
     const targetScale = Math.max(minScale, current.scale / 1.25);
     if (targetScale === current.scale) return;
+    fitModeRef.current = targetScale === minScale;
 
-    const ratio = targetScale / current.scale;
-    const targetX = pivotX - (pivotX - current.x) * ratio;
-    const targetY = pivotY - (pivotY - current.y) * ratio;
-
-    const clamped = clampTransform(targetX, targetY, targetScale, cw, ch, layout.width, layout.height);
+    const anchored = zoomAtPoint(current, targetScale, pivotX, pivotY);
+    const clamped = clampTransform(anchored.x, anchored.y, targetScale, cw, ch, layout.width, layout.height);
     animateTransformTo(clamped, 150);
   };
 
   // Nút "Đặt lại": về fitScale và căn giữa, hoạt ảnh 150ms
   const handleResetZoom = () => {
     if (!containerRef.current || !layout) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const cw = rect.width;
-    const ch = rect.height;
+    fitModeRef.current = true;
+    const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
     const fitScale = fitScaleRef.current;
 
     const targetX = (cw - layout.width * fitScale) / 2;
@@ -748,6 +651,33 @@ export default function SeatMap() {
       y: targetY,
     };
     animateTransformTo(target, 150);
+  };
+
+  const handleSelectionZoom = () => {
+    if (!containerRef.current || !layout) return;
+    fitModeRef.current = false;
+    const cw = containerRef.current.clientWidth, ch = containerRef.current.clientHeight;
+    const current = transformRef.current;
+    const seat = selectedSeatId ? layout.mappedSeats.find(s => s.id === selectedSeatId) : null;
+    const x = seat ? seat.pixelX + seat.size / 2 : (cw / 2 - current.x) / current.scale;
+    const y = seat ? seat.pixelY + seat.size / 2 : (ch / 2 - current.y) / current.scale;
+    const scale = Math.max(fitScaleRef.current, 1.375); // 44px targets, one click, also on mobile.
+    animateTransformTo(clampTransform(cw / 2 - x * scale, ch / 2 - y * scale,
+      scale, cw, ch, layout.width, layout.height));
+  };
+
+  const handleMapKeyDown = e => {
+    if (e.target !== e.currentTarget || !layout || !containerRef.current) return;
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); handleZoomIn(); }
+    else if (e.key === '-') { e.preventDefault(); handleZoomOut(); }
+    else if (e.key === '0') { e.preventDefault(); handleResetZoom(); }
+    else if (e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const t = transformRef.current;
+      animateTransformTo(clampTransform(t.x + (e.key === 'ArrowLeft' ? 60 : e.key === 'ArrowRight' ? -60 : 0),
+        t.y + (e.key === 'ArrowUp' ? 60 : e.key === 'ArrowDown' ? -60 : 0), t.scale,
+        containerRef.current.clientWidth, containerRef.current.clientHeight, layout.width, layout.height));
+    }
   };
 
   // Kích thước hiển thị thực tế của ghế trên màn hình
@@ -790,7 +720,7 @@ export default function SeatMap() {
   }
 
   // Nếu hasSeatMap là false: CHỈ hiện thông báo "Suất diễn chưa mở bán", không vẽ lưới rỗng
-  if (seatData && seatData.hasSeatMap === false) {
+  if (seatData && (seatData.hasSeatMap === false || seatData.seats.length === 0)) {
     return (
       <div
         style={{
@@ -830,7 +760,13 @@ export default function SeatMap() {
     );
   }
 
-  console.log("Selected Seat Data:", selectedSeat);
+  if (seatData && !layout) {
+    return <div role="alert" style={{ padding: '40px', textAlign: 'center' }}>
+      <h2>Sơ đồ ghế chưa đủ thông tin vị trí</h2>
+      <p>Không thể vẽ ghế thiếu tọa độ. Vui lòng liên hệ ban tổ chức.</p>
+      <button onClick={() => navigate(`/shows/${id}`)}>Quay lại chi tiết suất diễn</button>
+    </div>;
+  }
 
   return (
     <div style={{ maxWidth: '1200px', margin: '20px auto', padding: '16px' }}>
@@ -917,6 +853,32 @@ export default function SeatMap() {
         </div>
       </div>
 
+      <div aria-label="Chọn nhiều ghế" style={{ marginBottom: '16px' }}>
+        <p>Danh sách ghế chọn chờ giữ: {batchIds.length ? batchIds.map(seatId => {
+          const seat = seatData?.seats?.find(s => s.id === seatId);
+          return seat ? `${seat.row}·${seat.number}` : `#${seatId}`;
+        }).join(', ') : 'Chưa chọn ghế'}</p>
+        {batchIds.map(seatId => <button key={seatId} aria-label={`Bỏ ghế ${seatId}`} disabled={isHolding}
+          onClick={() => setBatchIds(ids => ids.filter(id => id !== seatId))}>Bỏ {seatData?.seats?.find(s => s.id === seatId)?.row}·{seatData?.seats?.find(s => s.id === seatId)?.number ?? seatId}</button>)}
+        <button onClick={handleConfirmBatch} disabled={!batchIds.length || isHolding || isRefreshing}>
+          {isHolding ? 'Đang giữ...' : `Giữ tất cả ${batchIds.length} ghế cùng lúc`}
+        </button>
+        <button onClick={() => setBatchIds([])} disabled={isHolding}>Bỏ danh sách chọn</button>
+        {holdError && <p role="alert">{holdError}</p>}
+        {interactionNotice && <p role="alert">{interactionNotice}</p>}
+      </div>
+      {session && remainingSeconds > 0 && (
+        <div role="status" aria-live="polite" data-testid="hold-session" style={{ marginBottom: '16px', color: '#fbbf24' }}>
+          Bạn đang giữ {session.heldSeats.length} ghế. Thời gian còn lại: {countdown}
+          <span> — {session.heldSeats.map(s => `Hàng ${s.row}, ghế ${s.number}`).join('; ')}</span>
+          <div aria-label="Nhả ghế đang giữ">
+            {session.heldSeats.map(seat => <button key={seat.id} type="button" disabled={isHolding}
+              aria-label={`Nhả ghế ${seat.id}`} onClick={() => confirmRelease(seat.id)}>
+              Nhả hàng {seat.row}, ghế {seat.number}
+            </button>)}
+          </div>
+        </div>
+      )}
       {/* Tiêu đề trang & Chế độ xem */}
       <div style={{ marginBottom: '16px', textAlign: 'left' }}>
         <h2 style={{ margin: '0 0 6px 0', fontSize: '24px', color: 'var(--text-h, #f1f5f9)', fontWeight: '700' }}>
@@ -927,101 +889,26 @@ export default function SeatMap() {
         </p>
       </div>
 
-      {/* Chú thích trạng thái (Legend) & Đếm số lượng ghế */}
+      {/* Cùng bảng màu với preview Organizer; màu hạng không phải giá vé. */}
       {layout && (
-        <div
-          className="seat-map-legend-container"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '16px',
-            padding: '14px 20px',
-            backgroundColor: 'var(--code-bg, #1f2028)',
-            border: '1px solid var(--border, #2e303a)',
-            borderRadius: '8px',
-            marginBottom: '16px',
-          }}
-        >
-          <div className="seat-map-legend-items" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-            {/* Trống */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '4px',
-                  backgroundColor: '#16a34a',
-                  border: '1px solid #15803d',
-                  color: '#ffffff',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '13px',
-                  fontWeight: 'bold',
-                }}
-              >
-                ✓
-              </span>
-              <span style={{ fontSize: '14px', color: 'var(--text-h, #f1f5f9)', fontWeight: '500' }}>
-                Trống ({layout.counts.available})
-              </span>
-            </div>
-
-            {/* Đang giữ */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '4px',
-                  backgroundColor: '#d97706',
-                  border: '1px solid #b45309',
-                  color: '#ffffff',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                }}
-              >
-                ⏳
-              </span>
-              <span style={{ fontSize: '14px', color: 'var(--text-h, #f1f5f9)', fontWeight: '500' }}>
-                Đang có người giữ ({layout.counts.held})
-              </span>
-            </div>
-
-            {/* Đã bán */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '4px',
-                  backgroundColor: '#4b5563',
-                  border: '1px solid #374151',
-                  color: '#ffffff',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                }}
-              >
-                ✕
-              </span>
-              <span style={{ fontSize: '14px', color: 'var(--text-h, #f1f5f9)', fontWeight: '500' }}>
-                Đã bán ({layout.counts.sold})
-              </span>
-            </div>
+        <section className="seat-map-legend-container" aria-label="Chú giải sơ đồ ghế"
+          style={{ padding: '14px 16px', border: '1px solid var(--border, #94a3b8)', borderRadius: 8, marginBottom: 16 }}>
+          <div aria-label="Chú giải hạng ghế" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <strong>Hạng ghế:</strong>
+            {layout.categories.map(c => <span key={c.name} data-category-color={c.name}
+              style={{ background: c.color, color: '#111827', padding: '5px 10px', borderRadius: 4, border: '1px solid #64748b' }}>{c.name}</span>)}
+            <span style={{ marginLeft: 'auto' }}>Tổng số ghế: <strong>{layout.counts.total}</strong></span>
           </div>
-
-          <div style={{ fontSize: '14px', color: 'var(--text, #9ca3af)', fontWeight: '500' }}>
-            Tổng số ghế: <strong style={{ color: 'var(--text-h, #f1f5f9)' }}>{layout.counts.total}</strong>
+          <div className="seat-map-legend-items" aria-label="Chú giải trạng thái"
+            style={{ display: 'flex', flexWrap: 'wrap', gap: 10, fontSize: 13 }}>
+            <span style={{ padding: '5px 8px', border: '1px solid #64748b', borderRadius: 4 }}>✓ Trống — theo màu hạng ({layout.counts.available})</span>
+            <span style={{ padding: '5px 8px', background: '#dbeafe', color: '#1e40af', border: '1px solid #2563eb', borderRadius: 4 }}>⏳ Bạn đang giữ ({layout.counts.mine})</span>
+            <span style={{ padding: '5px 8px', background: '#fef3c7', color: '#92400e', border: '1px solid #b45309', borderRadius: 4 }}>⏳ Người khác đang giữ ({layout.counts.other})</span>
+            <span style={{ padding: '5px 8px', background: '#e5e7eb', color: '#4b5563', border: '1px solid #9ca3af', borderRadius: 4 }}>✕ Đã bán ({layout.counts.sold})</span>
+            <span style={{ padding: '5px 8px', border: '2px dashed #7c3aed', borderRadius: 4 }}>✓ Chọn chờ giữ — chưa xác nhận</span>
           </div>
-        </div>
+          <p style={{ margin: '10px 0 0', fontSize: 12 }}>Viền xanh: đang xem chi tiết. Viền tím nét đứt: danh sách chọn tạm, chưa phải phiên giữ ghế.</p>
+        </section>
       )}
 
       {/* Gợi ý phóng to nếu kích thước ghế nhỏ hơn 24px */}
@@ -1042,7 +929,7 @@ export default function SeatMap() {
           }}
         >
           <span style={{ fontSize: '16px' }}>🔍</span>
-          <span>Phóng to để chọn ghế chính xác hơn (kích thước hiện tại: ~{Math.round(currentSeatPixelSize)}px)</span>
+          <span>Toàn cảnh — bấm “Chọn ghế” để có ô ghế dễ chạm (hiện tại: ~{Math.round(currentSeatPixelSize)}px)</span>
         </div>
       )}
 
@@ -1051,10 +938,14 @@ export default function SeatMap() {
         <div
           ref={containerRef}
           className="seat-map-viewport"
+          role="region"
+          aria-label="Sơ đồ ghế: phím mũi tên để di chuyển, cộng trừ để zoom, 0 để xem toàn cảnh"
+          tabIndex={0}
+          onKeyDown={handleMapKeyDown}
           style={{
             position: 'relative',
             width: '100%',
-            height: '520px',
+            height: 'clamp(360px, 65vh, 620px)',
             backgroundColor: 'var(--code-bg, #1f2028)',
             border: '1px solid var(--border, #2e303a)',
             borderRadius: '8px',
@@ -1068,6 +959,7 @@ export default function SeatMap() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
+          onLostPointerCapture={handlePointerCancel}
         >
           {/* Thanh công cụ 3 nút zoom: +, −, Đặt lại */}
           <div
@@ -1089,6 +981,10 @@ export default function SeatMap() {
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
             }}
           >
+            <button type="button" onClick={handleSelectionZoom} aria-label="Phóng tới kích thước dễ chọn ghế"
+              style={{ minWidth: '44px', minHeight: '44px', padding: '4px', borderRadius: '8px', cursor: 'pointer' }}>
+              Chọn ghế
+            </button>
             <button
               type="button"
               onClick={handleZoomIn}
@@ -1162,7 +1058,7 @@ export default function SeatMap() {
                 whiteSpace: 'nowrap',
               }}
             >
-              Đặt lại
+              Toàn cảnh
             </button>
           </div>
 
@@ -1211,9 +1107,19 @@ export default function SeatMap() {
                   pixelX={seat.pixelX}
                   pixelY={seat.pixelY}
                   size={seat.size}
+                  categoryColor={layout.categoryColors.get(seat.category || 'Chưa có hạng ghế')}
                   isSelected={selectedSeat?.id === seat.id}
-                    onClick={(s) => { setHoldError(null); setSelectedSeat(s); }}
+                  isPending={pendingIds.has(seat.id)}
+                  showLabel={currentSeatPixelSize >= 24}
+                  onClick={handleSeatClick}
                   />
+              ))}
+              {currentSeatPixelSize >= 24 && layout.rowLabels.map(row => (
+                <text key={row.key} data-row-label={row.row} x={row.x} y={row.y + 4} textAnchor="end"
+                  fontSize={Math.min(12, 40 / Math.max(1, String(row.row).length))} fontWeight="bold"
+                  fill="var(--text-h, #f1f5f9)" pointerEvents="none">
+                  <title>{`Hàng ${row.row}`}</title>{row.row}
+                </text>
               ))}
             </g>
           </svg>
@@ -1256,12 +1162,12 @@ export default function SeatMap() {
                 }}
               />
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: 'var(--text-h, #f1f5f9)' }}>
-                Chi tiết ghế: Khu {selectedSeat.section} - Hàng {selectedSeat.row} - Ghế {selectedSeat.number}
+                Chi tiết ghế: {selectedSeat.section ? `Khu ${selectedSeat.section} - ` : ''}Hàng {selectedSeat.row} - Ghế {selectedSeat.number}
               </h3>
             </div>
             <button
               type="button"
-              onClick={() => { setHoldError(null); setSelectedSeat(null); }}
+onClick={() => { dismissNotice(); setSelectedSeat(null); }}
               aria-label="Đóng thông tin ghế"
               title="Đóng (hoặc bấm chỗ trống trên sơ đồ)"
               style={{
@@ -1295,7 +1201,7 @@ export default function SeatMap() {
             <div>
               <div style={{ fontSize: '12px', color: 'var(--text, #9ca3af)', marginBottom: '4px' }}>Khu vực</div>
               <div style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-h, #f1f5f9)' }}>
-                {selectedSeat.section}
+                {selectedSeat.section || 'Chưa có thông tin'}
               </div>
             </div>
             <div>
@@ -1313,15 +1219,15 @@ export default function SeatMap() {
             <div>
               <div style={{ fontSize: '12px', color: 'var(--text, #9ca3af)', marginBottom: '4px' }}>Hạng ghế</div>
               <div style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-h, #f1f5f9)' }}>
-                {selectedSeat.category}
+                {selectedSeat.category || 'Chưa có thông tin'}
               </div>
             </div>
-            <div>
+            {existingPrice(selectedSeat.price) !== null && <div>
               <div style={{ fontSize: '12px', color: 'var(--text, #9ca3af)', marginBottom: '4px' }}>Giá vé</div>
               <div style={{ fontSize: '15px', fontWeight: '600', color: '#10b981' }}>
-                {selectedSeat.price ? `${selectedSeat.price.toLocaleString('vi-VN')} đ` : 'N/A'}
+                {existingPrice(selectedSeat.price)}
               </div>
-            </div>
+            </div>}
             <div>
               <div style={{ fontSize: '12px', color: 'var(--text, #9ca3af)', marginBottom: '4px' }}>Trạng thái</div>
               <div>
@@ -1332,7 +1238,7 @@ export default function SeatMap() {
                 )}
                 {(selectedSeat.displayStatus === 'HeldByMe' || selectedSeat.displayStatus === 'HeldByOther') && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '4px', backgroundColor: '#78350f', color: '#fde047', fontSize: '13px', fontWeight: '600' }}>
-                    ⏳ Đang có người giữ
+                    ⏳ {selectedSeat.displayStatus === 'HeldByMe' ? 'Bạn đang giữ' : 'Người khác đang giữ'}
                   </span>
                 )}
                 {selectedSeat.displayStatus === 'Sold' && (
@@ -1348,19 +1254,12 @@ export default function SeatMap() {
           <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
             {holdError && <div style={{ color: '#ef4444', fontSize: '13px' }}>{holdError}</div>}
 
-            {selectedSeat?.displayStatus === 'HeldByMe' && selectedSeat?.heldUntilUtc && (
-                <div style={{ color: '#fbbf24', fontWeight: 'bold', marginBottom: '10px' }}>
-                    Thời gian giữ ghế còn lại: {(() => {
-                        const expireTime = new Date(selectedSeat.heldUntilUtc + (selectedSeat.heldUntilUtc.endsWith('Z') ? '' : 'Z')).getTime();
-                        const remaining = Math.max(0, Math.floor((expireTime - currentTime) / 1000));
-                        const m = Math.floor(remaining / 60).toString().padStart(2, '0');
-                        const s = (remaining % 60).toString().padStart(2, '0');
-                        return `${m}:${s}`;
-                    })()}
-                </div>
-            )}
-
             <div style={{ display: 'flex', gap: '10px' }}>
+              {selectedSeat.displayStatus === 'Available' && (
+                <button disabled={isHolding} onClick={() => setBatchIds(ids => toggleBatch(ids, selectedSeat))}>
+                  {batchIds.includes(selectedSeat.id) ? 'Bỏ ghế khỏi danh sách' : 'Thêm ghế vào danh sách giữ'}
+                </button>
+              )}
               {selectedSeat.displayStatus === 'Available' && (
                 <button
                   disabled={isHolding}
@@ -1375,7 +1274,7 @@ export default function SeatMap() {
                 </button>
               )}
 
-              {(selectedSeat.displayStatus === 'Available' || selectedSeat.displayStatus === 'HeldByMe') && (
+              {selectedSeat.displayStatus === 'HeldByMe' && session && (
                 <button
                   disabled={isHolding}
                   className="font-bold py-2 px-6 rounded shadow-md transition duration-200 bg-green-600 hover:bg-green-700 text-white cursor-pointer"
@@ -1392,7 +1291,7 @@ export default function SeatMap() {
 
 
       {/* Modal thanh toán (Placeholder) */}
-      {isPaymentModalOpen && (
+{isPaymentModalOpen && selectedSeat?.displayStatus === 'HeldByMe' && session && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm">
           <div className="bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md border border-gray-700">
             <div className="flex justify-between items-center mb-6">
@@ -1409,8 +1308,7 @@ export default function SeatMap() {
               <p>Giá: {selectedSeat?.price ? `${selectedSeat.price.toLocaleString('vi-VN')} đ` : 'N/A'}</p>
               <p className="mt-4 italic text-sm text-gray-500">Tính năng thanh toán đang được phát triển...</p>
               {selectedSeat?.heldUntilUtc && (() => {
-                  const expireTime = new Date(selectedSeat.heldUntilUtc + (selectedSeat.heldUntilUtc.endsWith('Z') ? '' : 'Z')).getTime();
-                  const remaining = Math.max(0, Math.floor((expireTime - currentTime) / 1000));
+                  const remaining = remainingSeconds;
 
                   if (remaining > 0) {
                       const m = Math.floor(remaining / 60).toString().padStart(2, '0');

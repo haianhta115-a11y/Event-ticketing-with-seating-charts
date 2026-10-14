@@ -1,5 +1,12 @@
 # Event Ticketing System
 
+## Team local setup — Delivery 02 candidate
+
+Start with [the Windows 11 clean-setup guide](docs/team-ready/LOCAL-SETUP.md), not
+the historical migration chain or PRODUCT-01 private fixtures. These changes are
+still uncommitted: current `develop` will not contain them until Delivery 02 is approved and merged.
+Future shared database work requires the separate [Neon compatibility checklist](docs/team-ready/NEON-COMPATIBILITY.md).
+
 ## Batch 1A: môi trường local an toàn
 
 Dùng .NET 10, Node/npm và Docker Desktop đã cài. PostgreSQL 15 và Redis 7 chạy
@@ -63,6 +70,17 @@ Startup không migrate, không seed, không reset admin, không chèn ghế debu
 Cleanup mặc định tắt trong Development/Testing. Chỉ bật
 `BackgroundJobs__SeatHoldCleanupEnabled=true` sau khi xác minh DB/schema và chủ động
 cho phép job ghi dữ liệu. Staging/Production giữ mặc định chạy cleanup như trước.
+
+### Thời hạn giữ ghế (S-10)
+
+`SeatHolds__DurationMinutes` cấu hình số phút của một phiên giữ mới, mặc định 10.
+Startup từ chối giá trị ngoài 1–1440 phút để tránh cấu hình thời hạn không an toàn.
+Đổi cấu hình không gia hạn hoặc rút ngắn phiên đang tồn tại: các ghế chọn thêm,
+reload và nhả bớt ghế vẫn dùng deadline đã lưu trên máy chủ. UI đếm theo server time.
+
+Delivery 02 vẫn là code-only: cấu hình này không cho phép tự chạy historical EF
+migrations, seed, DB-03B hoặc triển khai lên database team. Rehearsal/test chỉ dùng
+database local cô lập được duyệt và Redis DB 15; không dùng source/protected DB.
 
 ### Kiểm tra Batch 1A
 

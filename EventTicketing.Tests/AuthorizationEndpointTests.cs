@@ -321,7 +321,7 @@ public sealed class AuthorizationEndpointTests : IAsyncLifetime
         var body = await locked.Content.ReadFromJsonAsync<JsonElement>();
         Assert.InRange(body.GetProperty("remainingSeconds").GetInt32(), 1, 900);
         using var redis = await ConnectionMultiplexer.ConnectAsync(LocalPostgresDatabase.VerifyDependencies().Redis);
-        Assert.InRange((await redis.GetDatabase().KeyTimeToLiveAsync($"lockout:{Email(101)}"))!.Value.TotalSeconds, 1, 900);
+        Assert.InRange((await redis.GetDatabase().KeyTimeToLiveAsync(factory.RedisKey($"lockout:{Email(101)}")))!.Value.TotalSeconds, 1, 900);
     }
 
     [Fact]
@@ -354,7 +354,7 @@ public sealed class AuthorizationEndpointTests : IAsyncLifetime
         for (var i = 0; i < 5; i++) Assert.Equal(HttpStatusCode.Unauthorized, (await LoginAsync(Email(101), "wrong")).StatusCode);
         using var redis = await ConnectionMultiplexer.ConnectAsync(LocalPostgresDatabase.VerifyDependencies().Redis);
         // Expire only this test's GUID account key. No flush/reset or shared-key deletion.
-        Assert.True(await redis.GetDatabase().KeyExpireAsync($"lockout:{Email(101)}", TimeSpan.Zero));
+        Assert.True(await redis.GetDatabase().KeyExpireAsync(factory.RedisKey($"lockout:{Email(101)}"), TimeSpan.Zero));
         await using var secondFactory = new LocalApplicationFactory(database);
         using var second = secondFactory.CreateClient();
         Assert.Equal(HttpStatusCode.OK, (await second.PostAsJsonAsync("/api/auth/login", new { email = Email(101), password = Password })).StatusCode);

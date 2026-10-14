@@ -317,7 +317,7 @@ public sealed class RegistrationActivationTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.TooManyRequests, (await client.PostAsJsonAsync("/api/auth/resend-activation", new { email = Email })).StatusCode);
         using var redis = await ConnectionMultiplexer.ConnectAsync(LocalPostgresDatabase.VerifyDependencies().Redis);
         var db = redis.GetDatabase();
-        var key = (RedisKey)("activation:resend:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Email))));
+        var key = (RedisKey)factory.RedisKey("activation:resend:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Email))));
         var entries = await db.SortedSetRangeByRankAsync(key);
         Assert.Equal(5, entries.Length);
         // Advance only this fixture's request scores; never flush/reset Redis.

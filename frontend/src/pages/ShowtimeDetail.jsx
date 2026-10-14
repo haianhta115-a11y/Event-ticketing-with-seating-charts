@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
+import { formatVietnamTime } from '../events/management';
 
 export default function ShowtimeDetail() {
   const { id } = useParams();
@@ -43,14 +44,7 @@ export default function ShowtimeDetail() {
 
   const formatDate = (utcString) => {
     if (!utcString) return '';
-    const date = new Date(utcString);
-    return date.toLocaleString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatVietnamTime(utcString);
   };
 
   if (loading) {

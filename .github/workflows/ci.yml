@@ -2,52 +2,127 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main, develop, staging]
   pull_request:
-    branches: [ main ]
+    branches: [main, develop, staging]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  backend:
+    name: Backend build, format and isolated tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: event_ticketing_test_ci_bootstrap
+          # ONLY this disposable, loopback-published CI service; no shared credentials.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['127.0.0.1:5432:5432']
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d event_ticketing_test_ci_bootstrap"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports: ['127.0.0.1:6379:6379']
+        options: >-
+          --health-cmd "redis-cli -n 15 ping"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      BATCH1A1_POSTGRES: Host=127.0.0.1;Port=5432;Database=event_ticketing_test_ci_config;Username=postgres;Include Error Detail=false
+      BATCH1A1_REDIS: 127.0.0.1:6379,defaultDatabase=15,abortConnect=true
+      CI_BUILD_CONFIGURATION: Release
     steps:
-    - uses: actions/checkout@v3
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: '10.0.x'
-    - name: Restore dependencies
-      run: dotnet restore EventTicketing.slnx
-    - name: Build
-      run: dotnet build EventTicketing.slnx --no-restore
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Restore build and safety-check dependencies
+        run: |
+          dotnet restore EventTicketing.slnx
+          dotnet restore tests/EnvironmentSafetyChecks/EnvironmentSafetyChecks.csproj
+      - name: Backend build
+        run: dotnet build EventTicketing.slnx -c Release --no-restore
+      - name: Backend format
+        run: dotnet format EventTicketing.slnx --verify-no-changes --no-restore
+      - name: Environment safety
+        run: dotnet run --project tests/EnvironmentSafetyChecks -c Release --no-restore
+      - name: Install isolated browser test runtime
+        run: |
+          npm ci --prefix frontend --ignore-scripts
+          npm install --prefix "$RUNNER_TEMP/browser-runtime" --ignore-scripts --no-package-lock playwright@1.62.1
+          "$RUNNER_TEMP/browser-runtime/node_modules/.bin/playwright" install --with-deps chrome
+          printf 'FIX03_PLAYWRIGHT=%s\n' "$RUNNER_TEMP/browser-runtime/node_modules/playwright" >> "$GITHUB_ENV"
+      - name: Full backend, real browsers and local latency (fail on missing or skipped tests)
+        run: node tests/ci/run-backend-tests.mjs
 
-  lint:
-    runs-on: ubuntu-latest
-    needs: build
+  frontend:
+    name: Frontend and workflow quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-    - uses: actions/checkout@v3
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: '10.0.x'
-    - name: Restore dependencies
-      run: dotnet restore EventTicketing.slnx
-    - name: Lint
-      run: dotnet format EventTicketing.slnx --verify-no-changes
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Install locked dependencies
+        run: |
+          npm ci --prefix frontend --ignore-scripts
+          npm ci --prefix tests/ci --ignore-scripts
+      - name: YAML, dependencies and failure-propagation regression checks
+        run: |
+          npm run check --prefix tests/ci
+          npm test --prefix tests/ci
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+      - name: Full frontend tests
+        working-directory: frontend
+        run: node --test tests/*.test.mjs
+      - name: Frontend production build
+        working-directory: frontend
+        run: npm run build
 
-  test:
-    runs-on: ubuntu-latest
-    needs: build
+  quality-gate:
+    name: Required quality gate
+    needs: [backend, frontend]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-    - uses: actions/checkout@v3
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: '10.0.x'
-    - name: Restore dependencies
-      run: dotnet restore EventTicketing.slnx
-    - name: Test with Coverage
-      run: dotnet test EventTicketing.slnx --verbosity normal --collect:"XPlat Code Coverage"
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Require every job to succeed
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+        run: node tests/ci/quality-gate.mjs
 
 

@@ -4,10 +4,12 @@ using EventTicketing.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using EventTicketing.Api.Data;
 using Npgsql;
+using Microsoft.EntityFrameworkCore;
 
 namespace EventTicketing.Api.Endpoints;
 
 public record HoldSeatRequest(int? UserId = null);
+public record HoldSeatsRequest(int[]? SeatIds);
 
 public static class SeatReservationEndpoints
 {
@@ -27,6 +29,49 @@ public static class SeatReservationEndpoints
                 return Results.Json(new { errorCode = "SEAT_SCHEMA_NOT_READY", message = "Sơ đồ ghế chưa sẵn sàng; cần hoàn tất chuyển đổi dữ liệu đã được duyệt." }, statusCode: 503);
             }
         });
+
+        group.MapPost("/hold", async (int showtimeId, [FromBody] HoldSeatsRequest request,
+            ISeatReservationService reservationService, ClaimsPrincipal user, CancellationToken ct) =>
+        {
+            var userId = AccessPolicies.UserId(user);
+            if (!userId.HasValue) return Results.Unauthorized();
+            if (request.SeatIds is not { Length: > 0 and <= 100 } ids || ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length)
+                return Results.BadRequest(new { success = false, errorCode = "INVALID_SEAT_IDS", message = "Cần 1–100 mã ghế dương, không trùng nhau.", rejectedSeatIds = Array.Empty<int>() });
+            var result = await reservationService.HoldSeatsAsync(showtimeId, ids, userId.Value, ct);
+            if (result.IsSuccess)
+                return Results.Ok(new
+                {
+                    success = true,
+                    seatIds = ids,
+                    status = "Held",
+                    heldUntilUtc = result.HeldUntilUtc,
+                    serverTimeUtc = result.ServerTimeUtc,
+                    remainingSeconds = result.RemainingSeconds,
+                    heldSeats = result.HeldSeats
+                });
+            var status = result.FailureReason switch
+            {
+                HoldFailureReason.NotFound => 404,
+                HoldFailureReason.SalesClosed => 400,
+                _ => 409
+            };
+            var code = result.FailureReason switch
+            {
+                HoldFailureReason.NotFound => "SEAT_NOT_FOUND",
+                HoldFailureReason.SalesClosed => "SALES_CLOSED",
+                HoldFailureReason.AlreadySold => "SEAT_ALREADY_SOLD",
+                _ => "SEAT_ALREADY_HELD"
+            };
+            return Results.Json(new
+            {
+                success = false,
+                errorCode = code,
+                message = result.ErrorMessage,
+                rejectedSeatIds = result.RejectedSeatIds,
+                serverTimeUtc = result.ServerTimeUtc
+            }, statusCode: status);
+        }).RequireAuthorization(AccessPolicies.SeatBooking)
+            .WithName("HoldSeatsAtomic").WithMetadata(new RequestSizeLimitAttribute(8192));
 
         // 1. Endpoint giữ chỗ 1 ghế (Seat Hold)
         group.MapPost("/{seatId:int}/hold", async (
@@ -151,15 +196,21 @@ public static class SeatReservationEndpoints
             int showtimeId,
             [FromQuery] int? currentUserId,
             ISeatReservationService reservationService,
+            AppDbContext db,
             TimeProvider timeProvider,
             ClaimsPrincipal user,
             CancellationToken ct) =>
         {
             var resolvedUserId = AccessPolicies.UserId(user);
             var seats = await reservationService.GetSeatingChartStatusAsync(showtimeId, resolvedUserId, ct);
+            // Preserve schema-not-ready 503 precedence on an incompatible legacy schema;
+            // do not disguise a missing seat column as a missing showtime/empty map.
+            if (!await db.Showtimes.AnyAsync(s => s.Id == showtimeId, ct))
+                return Results.NotFound(new { message = "Suất diễn không tồn tại." });
             return Results.Ok(new
             {
                 serverTimeUtc = timeProvider.GetUtcNow().UtcDateTime,
+                hasSeatMap = seats.Count > 0,
                 seats
             });
         })

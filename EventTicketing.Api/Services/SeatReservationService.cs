@@ -2,12 +2,14 @@ using EventTicketing.Api.Data;
 using EventTicketing.Api.Entities;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
+using EventTicketing.Api.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace EventTicketing.Api.Services;
 
-public sealed class SeatReservationService(AppDbContext db, TimeProvider timeProvider) : ISeatReservationService
+public sealed class SeatReservationService(AppDbContext db, TimeProvider timeProvider, IOptions<SeatHoldOptions>? options = null) : ISeatReservationService
 {
-    private static readonly TimeSpan DefaultHoldDuration = TimeSpan.FromMinutes(10);
+    private readonly TimeSpan holdDuration = TimeSpan.FromMinutes((options?.Value ?? new SeatHoldOptions()).DurationMinutes);
     public const string AlreadyHeldMessage = "ghế vừa có người chọn";
 
     public Task<HoldSeatResult> HoldSeatAsync(
@@ -30,25 +32,39 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
         // Two-int keys are disjoint from the importer's single-bigint advisory keys.
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({ShowtimeId}, {userId})", cancellationToken);
-        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var sampledNow = timeProvider.GetUtcNow().UtcDateTime;
+        // PostgreSQL timestamps store microseconds. Return the exact persisted deadline,
+        // not a 100ns remainder that disappears when S-14 reloads the hold from storage.
+        var now = new DateTime(sampledNow.Ticks - sampledNow.Ticks % 10, DateTimeKind.Utc);
 
         // AC 4: Kiểm tra suất diễn đã đóng bán chưa
-        var showtime = await db.Showtimes
+        // Share locks serialize new holds against close/unpublish. Existing holds and
+        // their release/read paths remain independent of the sales switch.
+        var eventId = await db.Showtimes.Where(s => s.Id == ShowtimeId).Select(s => (int?)s.EventId)
+            .SingleOrDefaultAsync(cancellationToken);
+        var evt = eventId.HasValue ? await db.Events.FromSqlInterpolated(
+            $"SELECT * FROM events WHERE id={eventId.Value} FOR SHARE").SingleOrDefaultAsync(cancellationToken) : null;
+        var showtime = await db.Showtimes.FromSqlInterpolated(
+            $"SELECT * FROM showtimes WHERE id={ShowtimeId} FOR SHARE")
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == ShowtimeId, cancellationToken);
 
-        if (showtime != null && showtime.Status == ShowtimeStatus.Closed)
+        if (showtime != null && (showtime.Status != ShowtimeStatus.OnSale || evt?.Status != EventStatus.Published))
         {
-            return HoldSeatResult.Failed("suất không còn mở bán", HoldFailureReason.SalesClosed, now);
+            return HoldSeatResult.Failed("suất không còn mở bán", HoldFailureReason.SalesClosed, now, rejectedSeatIds: orderedIds);
         }
 
         var existingExpiry = await db.Seats.AsNoTracking()
             .Where(s => s.ShowtimeId == ShowtimeId && s.Status == SeatStatus.Held
                 && s.HeldByUserId == userId && s.HeldUntil > now)
             .MinAsync(s => s.HeldUntil, cancellationToken);
-        var targetHeldUntil = existingExpiry ?? now.Add(DefaultHoldDuration);
+        var targetHeldUntil = existingExpiry ?? now.Add(holdDuration);
 
         // Ascending row order prevents cycles between overlapping multi-seat batches.
+        var rejected = new List<int>();
+        HoldFailureReason? failure = null;
+        string? failureMessage = null;
+        Seat? firstRejectedSeat = null;
         foreach (var seatId in orderedIds)
         {
             var currentSeat = await db.Seats.AsNoTracking()
@@ -56,7 +72,10 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
             if (currentSeat == null)
             {
                 await LegacySeatData.RejectUnresolvedSeatAsync(db, seatId, cancellationToken);
-                return HoldSeatResult.Failed("Ghế không tồn tại.", HoldFailureReason.NotFound, now);
+                rejected.Add(seatId);
+                failure ??= HoldFailureReason.NotFound;
+                failureMessage ??= "Ghế không tồn tại.";
+                continue;
             }
 
             // PostgreSQL rechecks this predicate after waiting for a concurrent row writer.
@@ -74,12 +93,22 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
                 currentSeat = await db.Seats.AsNoTracking()
                     .FirstOrDefaultAsync(s => s.Id == seatId && s.ShowtimeId == ShowtimeId, cancellationToken);
                 if (currentSeat == null)
-                    return HoldSeatResult.Failed("Ghế không tồn tại.", HoldFailureReason.NotFound, now);
-                return currentSeat.Status == SeatStatus.Sold
-                    ? HoldSeatResult.Failed("Ghế đã được bán.", HoldFailureReason.AlreadySold, now, currentSeat)
-                    : HoldSeatResult.Failed(AlreadyHeldMessage, HoldFailureReason.AlreadyHeld, now, currentSeat);
+                {
+                    rejected.Add(seatId); failure ??= HoldFailureReason.NotFound;
+                    failureMessage ??= "Ghế không tồn tại.";
+                    continue;
+                }
+                rejected.Add(seatId);
+                failure ??= currentSeat.Status == SeatStatus.Sold ? HoldFailureReason.AlreadySold : HoldFailureReason.AlreadyHeld;
+                failureMessage ??= currentSeat.Status == SeatStatus.Sold ? "Ghế đã được bán." : AlreadyHeldMessage;
+                firstRejectedSeat ??= currentSeat;
             }
         }
+
+        // Returning without COMMIT rolls back every provisional change, including seats
+        // following a conflict. Collect all rejected IDs, never other holders' identities.
+        if (rejected.Count > 0)
+            return HoldSeatResult.Failed(failureMessage!, failure!.Value, now, firstRejectedSeat, rejected);
 
         // Giữ chỗ thành công! Lấy danh sách toàn bộ các ghế user đang giữ trong phiên này
         var myHeldSeats = await db.Seats
@@ -160,6 +189,7 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
                 s.Id,
                 s.ShowtimeId,
                 s.SeatCategoryId,
+                Category = s.SeatCategory.Name,
                 s.Row,
                 s.Number,
                 s.X,
@@ -211,7 +241,8 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
                 s.Y,
                 displayStatus,
                 s.Status == SeatStatus.Held ? s.HeldUntil : null,
-                canSelect);
+                canSelect,
+                s.Category);
         }).ToList();
     }
 

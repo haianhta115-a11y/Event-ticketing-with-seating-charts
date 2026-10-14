@@ -8,11 +8,12 @@ using EventTicketing.Api.Security;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using StackExchange.Redis;
+using EventTicketing.Api.Configuration;
 
 namespace EventTicketing.Api.Services;
 
 public sealed class RegistrationService(AppDbContext db, IEmailDelivery email, EmailDeliveryOptions options,
-    IConnectionMultiplexer redis, TimeProvider clock, ILogger<RegistrationService> logger)
+    IConnectionMultiplexer redis, TimeProvider clock, ILogger<RegistrationService> logger, RedisKeyScope? scope = null)
 {
     public const string GenericMessage = "Nếu email hợp lệ, bạn sẽ nhận được hướng dẫn.";
     public static bool ValidEmail(string? value) => !string.IsNullOrWhiteSpace(value) &&
@@ -101,7 +102,7 @@ public sealed class RegistrationService(AppDbContext db, IEmailDelivery email, E
     public async Task<int> ResendAsync(string recipient, CancellationToken ct)
     {
         var normalizedEmail = recipient.Trim().ToLowerInvariant();
-        var key = (RedisKey)$"activation:resend:{Hash(normalizedEmail)}";
+        var key = (RedisKey)(scope?.Key($"activation:resend:{Hash(normalizedEmail)}") ?? $"activation:resend:{Hash(normalizedEmail)}");
         var limited = await redis.GetDatabase().ScriptEvaluateAsync("""
             local time = redis.call('TIME')
             local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)

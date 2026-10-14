@@ -1,8 +1,10 @@
-param([string]$Filter='', [string]$ResultName='delivery-01.trx')
+param([string]$Filter='', [string]$ResultName='delivery-01.trx',
+  [ValidateSet('Debug','Release')][string]$Configuration='Debug', [switch]$CiSuite)
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 if($ResultName -notmatch '^[A-Za-z0-9_.-]+\.trx$'){throw 'Invalid result filename'}
 $oldPostgres=$env:BATCH1A1_POSTGRES; $oldRedis=$env:BATCH1A1_REDIS
+$oldConfiguration=$env:CI_BUILD_CONFIGURATION
 try {
   $localUser=(docker exec event_ticketing_db printenv POSTGRES_USER).Trim()
   if($LASTEXITCODE -ne 0){throw 'Local credential lookup failed'}
@@ -12,12 +14,20 @@ try {
   if($LASTEXITCODE -ne 0 -or ($identity -join '').Trim() -ne 'postgres|127.0.0.1|5432'){throw 'Local database identity mismatch'}
   $env:BATCH1A1_POSTGRES='Host=127.0.0.1;Port=5432;Database=event_ticketing_test_delivery_config;Username="'+$localUser.Replace('"','""')+'";Password="'+$localPassword.Replace('"','""')+'";Include Error Detail=false'
   $env:BATCH1A1_REDIS='127.0.0.1:6379,defaultDatabase=15,abortConnect=true'
-  $arguments=@('test',(Join-Path $repo 'EventTicketing.Tests/EventTicketing.Tests.csproj'),'--no-build','--no-restore',
-    '--logger',('trx;LogFileName='+$ResultName),'--results-directory',(Join-Path $repo 'EventTicketing.Tests/TestResults/delivery'))
-  if($Filter){$arguments+=@('--filter',$Filter)}
-  & dotnet @arguments
-  $result=$LASTEXITCODE
+  if($CiSuite) {
+    if($Filter){throw 'CiSuite runs all required phases; Filter cannot be supplied'}
+    $env:CI_BUILD_CONFIGURATION=$Configuration
+    & node (Join-Path $repo 'tests/ci/run-backend-tests.mjs')
+    $result=$LASTEXITCODE
+  } else {
+    $arguments=@('test',(Join-Path $repo 'EventTicketing.Tests/EventTicketing.Tests.csproj'),'-c',$Configuration,'--no-build','--no-restore',
+      '--logger',('trx;LogFileName='+$ResultName),'--results-directory',(Join-Path $repo 'EventTicketing.Tests/TestResults/delivery'))
+    if($Filter){$arguments+=@('--filter',$Filter)}
+    & dotnet @arguments
+    $result=$LASTEXITCODE
+  }
 } finally {
   $env:BATCH1A1_POSTGRES=$oldPostgres; $env:BATCH1A1_REDIS=$oldRedis
+  $env:CI_BUILD_CONFIGURATION=$oldConfiguration
 }
 exit $result

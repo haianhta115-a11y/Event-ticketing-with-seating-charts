@@ -14,6 +14,7 @@ public sealed class EmailDeliveryOptions
 {
     public string Mode { get; set; } = "Disabled";
     public string ActivationUrl { get; set; } = "";
+    public string PickupDirectory { get; set; } = ".local-mail";
     public string Host { get; set; } = "";
     public int Port { get; set; } = 587;
     public string From { get; set; } = "";
@@ -37,12 +38,12 @@ public sealed class SmtpEmailDelivery(EmailDeliveryOptions options) : IEmailDeli
 }
 
 // Development-only mailbox: no external email and no tokens in logs.
-public sealed class PickupEmailDelivery(IWebHostEnvironment environment) : IEmailDelivery
+public sealed class PickupEmailDelivery(IWebHostEnvironment environment, EmailDeliveryOptions? options = null) : IEmailDelivery
 {
     public async Task SendAsync(EmailMessage message, CancellationToken cancellationToken)
     {
         if (!environment.IsDevelopment()) throw new InvalidOperationException("Pickup email is Development-only.");
-        var directory = Path.Combine(environment.ContentRootPath, ".local-mail");
+        var directory = Path.GetFullPath(options?.PickupDirectory ?? ".local-mail", environment.ContentRootPath);
         Directory.CreateDirectory(directory);
         await File.WriteAllTextAsync(Path.Combine(directory, Guid.NewGuid().ToString("N") + ".json"),
             JsonSerializer.Serialize(message), cancellationToken);
