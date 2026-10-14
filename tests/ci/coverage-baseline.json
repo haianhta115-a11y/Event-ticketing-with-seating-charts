@@ -1,0 +1,5 @@
+{
+  "sha": "b41f67def33d78356c05b8ab9d3acb3b3f82aeaf",
+  "scope": "frontend-executable-js",
+  "method": "Export this earlier Delivery 02 develop commit, install its lockfile, run its 95 frontend tests with Node test LCOV and compare line/function coverage against current code. New JS modules retain the existing 90 percent floor; JSX/C# are not claimed as measured."
+}

@@ -4,10 +4,16 @@ import path from 'node:path';
 import process from 'node:process';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { parseLcov, verifyChangedCoverage, resolveCoverageBase } from './coverage.mjs';
+import { parseLcov, verifyChangedCoverage, resolveCoverageBase, parseApprovedInitialBaseline } from './coverage.mjs';
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
-const baseline = resolveCoverageBase(process.env.COVERAGE_BASE_SHA, process.env.COVERAGE_INITIAL_BASE_SHA, head);
+const requested = process.env.COVERAGE_BASE_SHA;
+// Initial pushes have no previous ref. Use only the existing, measured and
+// version-controlled earlier baseline, never HEAD or an inferred parent.
+const approvedInitial = /^0{40}$/.test(requested || '')
+  ? process.env.COVERAGE_INITIAL_BASE_SHA || parseApprovedInitialBaseline(fs.readFileSync(path.join(repo, 'tests/ci/coverage-baseline.json'), 'utf8'))
+  : process.env.COVERAGE_INITIAL_BASE_SHA;
+const baseline = resolveCoverageBase(requested, approvedInitial, head);
 if (execFileSync('git', ['rev-parse', '--verify', baseline + '^{commit}'], { cwd: repo, encoding: 'utf8' }).trim() !== baseline)
   throw new Error('Coverage baseline not available locally.');
 if (spawnSync('git', ['merge-base', '--is-ancestor', baseline, 'HEAD'], { cwd: repo }).status !== 0)

@@ -26,9 +26,10 @@ not evidence of live staging acceptance, SMTP, rollback or a <5-minute pipeline.
    `STAGING_HOME_URL`. Only after all approvals, set
    `STAGING_DEPLOYMENT_APPROVED=true`. Unset/false means no image publication/deploy.
    Manual workflows require an explicit earlier ancestor `coverage_base_sha`.
-   A first branch push has an all-zero GitHub `before` SHA: repository admin must
-   explicitly set `COVERAGE_INITIAL_BASE_SHA` to the reviewed integration base before
-   that push. Without it, CI fails closed (or run manual CI with the earlier SHA).
+   A first branch push has an all-zero GitHub `before` SHA. CI uses the reviewed,
+   measured earlier SHA in `tests/ci/coverage-baseline.json`, unless an explicit
+   nonempty `COVERAGE_INITIAL_BASE_SHA` repository variable overrides it. Missing or
+   invalid metadata/override fails closed; see CI-BASELINE-AND-REDIS.md for evidence.
    The approved initial base must exist, be an ancestor and differ from the new HEAD;
    there is no fallback comparing a new commit with itself. No variable was set here.
 

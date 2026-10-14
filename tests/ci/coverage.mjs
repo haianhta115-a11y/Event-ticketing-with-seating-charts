@@ -6,9 +6,19 @@ import { pathToFileURL } from 'node:url';
 export function resolveCoverageBase(requested, approvedInitial, head) {
   const initialPush = /^0{40}$/.test(requested || '');
   const base = initialPush ? approvedInitial : requested;
-  if (!/^[a-f\d]{40}$/.test(base || '') || /^0{40}$/.test(base) || initialPush && base === head)
+  if (!/^[a-f\d]{40}$/.test(base || '') || /^0{40}$/.test(base) || base === head)
     throw new Error('Explicit earlier approved coverage baseline required; no current-commit fallback.');
   return base;
+}
+
+export function parseApprovedInitialBaseline(text) {
+  let value;
+  try { value = JSON.parse(text); }
+  catch { throw new Error('Missing/invalid reviewed initial coverage baseline metadata.'); }
+  if (!value || value.scope !== 'frontend-executable-js' || !/^[a-f\d]{40}$/.test(value.sha || '') || /^0{40}$/.test(value.sha)
+      || typeof value.method !== 'string' || !value.method.trim())
+    throw new Error('Missing/invalid reviewed initial coverage baseline metadata.');
+  return value.sha;
 }
 
 export function parseLcov(text) {

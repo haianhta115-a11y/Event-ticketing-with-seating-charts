@@ -18,6 +18,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using EventTicketing.Api.Data;
 using Npgsql;
+using StackExchange.Redis;
 
 namespace EventTicketing.Tests.Infrastructure;
 
@@ -83,6 +84,11 @@ internal sealed class LocalApplicationFactory(LocalPostgresDatabase database) : 
         builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new PeerAddressFilter(peerAddress)));
         builder.ConfigureServices(services =>
         {
+            // Reuse the real connection already opened/PINGed asynchronously by
+            // the fixture. An instance registration is fixture-owned, so disposing
+            // one API host must not close Redis for another host of this fixture.
+            services.RemoveAll<IConnectionMultiplexer>();
+            services.AddSingleton<IConnectionMultiplexer>(database.Redis);
             if (DbInterceptors.Length > 0) services.AddDbContext<AppDbContext>(options => options.AddInterceptors(DbInterceptors));
             services.RemoveAll<IEmailDelivery>();
             services.AddSingleton<IEmailDelivery>(Email);

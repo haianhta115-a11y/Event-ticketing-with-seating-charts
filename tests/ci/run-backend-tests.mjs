@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
 
 export const phases = [
-  ['api', 'FullyQualifiedName!~RealBrowser&FullyQualifiedName!~Burst200Requests100Seats&Category!=Performance', 367],
+  ['api', 'FullyQualifiedName!~RealBrowser&FullyQualifiedName!~Burst200Requests100Seats&Category!=Performance', 372],
   ['concurrency', 'FullyQualifiedName~Burst200Requests100Seats', 1, 10],
   ['browser-s13', 'FullyQualifiedName~RealBrowser_SelectFive', 1],
   ['browser-s08-s11', 'FullyQualifiedName~RealBrowser_PublicPagination', 1],
