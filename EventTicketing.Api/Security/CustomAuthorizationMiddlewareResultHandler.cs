@@ -23,9 +23,8 @@ public class CustomAuthorizationMiddlewareResultHandler : IAuthorizationMiddlewa
     {
         if (authorizeResult.Forbidden && authorizeResult.AuthorizationFailure != null)
         {
-            _logger.LogWarning("User {User} lacks required role/policy to access {Path}",
-                AccessPolicies.UserId(context.User)?.ToString() ?? "Unknown",
-                context.Request.Path);
+            _logger.LogWarning("Caller lacks required role/policy at endpoint {Endpoint}",
+                context.GetEndpoint()?.DisplayName ?? "Undeclared");
         }
 
         await _defaultHandler.HandleAsync(next, context, policy, authorizeResult);

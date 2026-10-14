@@ -125,7 +125,8 @@ public interface ISeatReservationService
     Task<IReadOnlyList<SeatDisplayDto>> GetSeatingChartStatusAsync(
         int performanceId,
         int? currentUserId = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        System.Security.Claims.ClaimsPrincipal? viewer = null);
 
     Task<UserHoldSessionDto?> GetUserHoldSessionAsync(
         int performanceId,

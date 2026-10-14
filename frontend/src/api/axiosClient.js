@@ -21,7 +21,10 @@ axiosClient.interceptors.request.use(
             config.headers.setContentType(undefined);
         }
         const token = localStorage.getItem('token');
-        if (token) {
+        // Login authenticates the submitted credentials, not a previous session.
+        // Keep sending the stored token elsewhere so expired sessions receive 401.
+        const isLogin = config.url?.split('?')[0] === '/auth/login';
+        if (token && !isLogin) {
             config.headers.Authorization = `Bearer ${token}`;
         }
         return config;

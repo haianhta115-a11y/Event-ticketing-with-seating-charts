@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using EventTicketing.Api.Data;
@@ -16,15 +17,16 @@ namespace EventTicketing.LocalSetup;
 // Explicit CLI only. Never invoked by application startup; never migrates an existing DB.
 public static class FreshLocalDatabase
 {
-    public static NpgsqlConnectionStringBuilder Validate(string connectionString, string target)
+    public static NpgsqlConnectionStringBuilder Validate(string connectionString, string target, LocalPostgresEndpoint? endpoint = null)
     {
+        endpoint ??= LocalPostgresEndpoint.FromEnvironment();
         NpgsqlConnectionStringBuilder connection;
         try { connection = new(connectionString); }
         catch { throw new InvalidOperationException("Invalid local connection configuration; values withheld."); }
         if (!Regex.IsMatch(target, @"\Aevent_ticketing_test_team_[a-f0-9]{32}\z", RegexOptions.CultureInvariant)
-            || connection.Database != target || connection.Host != "127.0.0.1" || connection.Port != 5432
+            || connection.Database != target || connection.Host != "127.0.0.1" || connection.Port != endpoint.Port
             || string.IsNullOrWhiteSpace(connection.Username))
-            throw new InvalidOperationException("Requires exact new team test database, literal 127.0.0.1:5432 and explicit username.");
+            throw new InvalidOperationException("Requires exact new team test database, approved literal loopback endpoint and explicit username.");
         connection.Pooling = false;
         connection.IncludeErrorDetail = false;
         connection.LogParameters = false;
@@ -52,17 +54,24 @@ public static class FreshLocalDatabase
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", commands.Select(c => c.CommandText)))));
     }
 
-    private static async Task Identity(NpgsqlConnection connection, string target)
+    private static async Task Identity(NpgsqlConnection connection, string target, LocalPostgresEndpoint endpoint)
     {
-        await using var query = new NpgsqlCommand("SELECT current_database(), inet_server_port()", connection);
+        await using var query = new NpgsqlCommand("""
+            SELECT current_database(), inet_server_port(), system_identifier::text,
+                   current_setting('server_version_num')::int
+            FROM pg_control_system()
+            """, connection);
         await using var reader = await query.ExecuteReaderAsync();
-        if (!await reader.ReadAsync() || reader.GetString(0) != target || reader.GetInt32(1) != 5432)
+        if (!await reader.ReadAsync() || reader.GetString(0) != target || reader.GetInt32(1) != endpoint.Port
+            || reader.GetString(2) != endpoint.SystemIdentifier || reader.GetInt32(3) is < 150000 or >= 160000)
             throw new InvalidOperationException("Local PostgreSQL identity mismatch.");
     }
 
-    public static async Task Initialize(string connectionString, string target)
+    public static async Task Initialize(string connectionString, string target, LocalPostgresEndpoint? endpoint = null)
     {
-        var verified = Validate(connectionString, target); // All guards BEFORE any connection.
+        endpoint ??= LocalPostgresEndpoint.FromEnvironment();
+        var verified = Validate(connectionString, target, endpoint); // All guards BEFORE any connection.
+        endpoint.RequireIdentity();
         await using var context = Context(verified.ConnectionString);
         var operations = SchemaOperations(context); // Inspect model BEFORE CREATE DATABASE.
         var hash = ModelHash(context);
@@ -70,7 +79,7 @@ public static class FreshLocalDatabase
         await using (var admin = new NpgsqlConnection(adminString.ConnectionString))
         {
             await admin.OpenAsync();
-            await Identity(admin, "postgres");
+            await Identity(admin, "postgres", endpoint);
             await using var exists = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname=@name)", admin);
             exists.Parameters.AddWithValue("name", target);
             if ((bool)(await exists.ExecuteScalarAsync())!)
@@ -82,7 +91,7 @@ public static class FreshLocalDatabase
 
         await context.Database.OpenConnectionAsync();
         var local = (NpgsqlConnection)context.Database.GetDbConnection();
-        await Identity(local, target);
+        await Identity(local, target, endpoint);
         await using var empty = new NpgsqlCommand("""
             SELECT (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                     WHERE n.nspname NOT LIKE 'pg_%' AND n.nspname <> 'information_schema')
@@ -106,17 +115,19 @@ public static class FreshLocalDatabase
             """);
         await context.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO public.local_setup_metadata(database_name,model_sha256) VALUES ({target},{hash})");
         await transaction.CommitAsync();
-        await Verify(verified.ConnectionString, target);
+        await Verify(verified.ConnectionString, target, endpoint);
         // Any failure preserves the new database and evidence; never drops or retries cleanup.
     }
 
-    public static async Task<string> Verify(string connectionString, string target)
+    public static async Task<string> Verify(string connectionString, string target, LocalPostgresEndpoint? endpoint = null)
     {
-        var verified = Validate(connectionString, target);
+        endpoint ??= LocalPostgresEndpoint.FromEnvironment();
+        var verified = Validate(connectionString, target, endpoint);
+        endpoint.RequireIdentity();
         await using var context = Context(verified.ConnectionString);
         await context.Database.OpenConnectionAsync();
         var connection = (NpgsqlConnection)context.Database.GetDbConnection();
-        await Identity(connection, target);
+        await Identity(connection, target, endpoint);
         await using var marker = new NpgsqlCommand("SELECT model_sha256 FROM public.local_setup_metadata WHERE database_name=@name", connection);
         marker.Parameters.AddWithValue("name", target);
         if ((string?)await marker.ExecuteScalarAsync() != ModelHash(context))
@@ -151,12 +162,13 @@ public static class FreshLocalDatabase
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes((string)(await inventory.ExecuteScalarAsync())!)));
     }
 
-    public static async Task Provision(string connectionString, string target, string email, string role, string password)
+    public static async Task Provision(string connectionString, string target, string email, string role, string password, LocalPostgresEndpoint? endpoint = null)
     {
         if (role is not ("Organizer" or "Admin") || !Regex.IsMatch(email, @"\A[A-Za-z0-9._+-]+@example\.test\z") || password.Length < 12)
             throw new InvalidOperationException("Fixture requires Organizer/Admin, @example.test email and a password of at least 12 characters.");
-        await Verify(connectionString, target); // Only databases initialized by this exact model/tool.
-        await using var context = Context(Validate(connectionString, target).ConnectionString);
+        endpoint ??= LocalPostgresEndpoint.FromEnvironment();
+        await Verify(connectionString, target, endpoint); // Only databases initialized by this exact model/tool.
+        await using var context = Context(Validate(connectionString, target, endpoint).ConnectionString);
         var normalized = email.ToLowerInvariant();
         await using var transaction = await context.Database.BeginTransactionAsync();
         await context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({normalized},0))");
@@ -175,5 +187,43 @@ public static class FreshLocalDatabase
         context.Users.Add(user);
         await context.SaveChangesAsync();
         await transaction.CommitAsync();
+    }
+}
+
+// Explicit endpoint approval is separate from the connection string. A forwarded port
+// alone does not prove which cluster is behind it. Network operations require a pin
+// obtained read-only from the independently verified local PostgreSQL 15 instance.
+public sealed class LocalPostgresEndpoint
+{
+    public int Port { get; }
+    public string? SystemIdentifier { get; }
+
+    private LocalPostgresEndpoint(int port, string? systemIdentifier)
+    {
+        Port = port;
+        SystemIdentifier = systemIdentifier;
+    }
+
+    public static LocalPostgresEndpoint FromEnvironment() => FromConfiguration(
+        Environment.GetEnvironmentVariable("LOCAL_SETUP_POSTGRES_PORT"),
+        Environment.GetEnvironmentVariable("LOCAL_SETUP_POSTGRES_SYSTEM_IDENTIFIER"));
+
+    public static LocalPostgresEndpoint FromConfiguration(string? port, string? systemIdentifier)
+    {
+        if (!int.TryParse(port ?? "5432", NumberStyles.None, CultureInfo.InvariantCulture, out var parsed)
+            || parsed is not (5432 or 55432))
+            throw new InvalidOperationException("Unapproved local PostgreSQL test port; only 5432 or explicitly pinned 55432 is supported.");
+        if (systemIdentifier != null && (!ulong.TryParse(systemIdentifier, NumberStyles.None, CultureInfo.InvariantCulture, out var id)
+            || id == 0 || id.ToString(CultureInfo.InvariantCulture) != systemIdentifier))
+            throw new InvalidOperationException("Invalid local PostgreSQL cluster identity pin.");
+        if (parsed != 5432 && systemIdentifier == null)
+            throw new InvalidOperationException("Nondefault local test port requires an explicit cluster identity pin.");
+        return new LocalPostgresEndpoint(parsed, systemIdentifier);
+    }
+
+    public void RequireIdentity()
+    {
+        if (SystemIdentifier == null)
+            throw new InvalidOperationException("Set LOCAL_SETUP_POSTGRES_SYSTEM_IDENTIFIER from the verified local instance before any database operation.");
     }
 }

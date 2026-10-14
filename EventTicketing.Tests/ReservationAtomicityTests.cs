@@ -11,10 +11,15 @@ namespace EventTicketing.Tests;
 [Trait("Category", "Integration")]
 public sealed class ReservationAtomicityTests
 {
-    private sealed class Clock : TimeProvider
+    private sealed class Clock : TimeProvider, IReservationClock
     {
         public DateTimeOffset Now = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
         public override DateTimeOffset GetUtcNow() => Now;
+        public Task<DateTime> NowAsync(EventTicketing.Api.Data.AppDbContext db, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult(Now.UtcDateTime);
+        }
     }
 
     private static async Task<LocalPostgresDatabase> Fixture()

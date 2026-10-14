@@ -13,13 +13,13 @@ export function parseWorkflow(source) {
   return data;
 }
 export function readWorkflows(root = repo) {
-  return ['ci.yml', 'deploy-staging.yml'].map(name => parseWorkflow(readFileSync(path.join(root, '.github/workflows', name), 'utf8')));
+  return ['ci.yml', 'deploy-staging.yml', 'staging.yml'].map(name => parseWorkflow(readFileSync(path.join(root, '.github/workflows', name), 'utf8')));
 }
 const list = value => value == null ? [] : Array.isArray(value) ? value : [value];
 const runText = job => (job?.steps || []).map(step => step.run || '').join('\n');
 const requireCheck = (condition, message) => { if (!condition) throw new Error(message); };
-export function verify(ci, delivery) {
-  for (const workflow of [ci, delivery]) {
+export function verify(ci, delivery, staging) {
+  for (const workflow of [ci, delivery, ...(staging ? [staging] : [])]) {
     requireCheck(workflow.permissions?.contents === 'read', 'Default contents permission must be read-only.');
     requireCheck(!workflow.on?.pull_request_target, 'Privileged PR execution is forbidden.');
     const visit = (name, chain = []) => {
@@ -39,10 +39,11 @@ export function verify(ci, delivery) {
     }
   }
   for (const branch of ['main', 'develop', 'staging']) {
-    requireCheck(ci.on?.push?.branches.includes(branch), 'CI push trigger missing.');
+    requireCheck(Object.hasOwn(ci.on, 'push') && (!ci.on.push?.branches || ci.on.push.branches.includes(branch)), 'CI push trigger missing.');
     requireCheck(ci.on?.pull_request?.branches.includes(branch), 'CI PR trigger missing.');
   }
   requireCheck(Object.hasOwn(ci.on, 'workflow_call'), 'Reusable quality workflow missing.');
+  requireCheck(ci.on.workflow_dispatch.inputs.coverage_base_sha.required === true, 'Manual coverage baseline must be explicit.');
   const backend = ci.jobs.backend, frontend = ci.jobs.frontend, gate = ci.jobs['quality-gate'];
   requireCheck(runText(backend).includes('dotnet build EventTicketing.slnx') && runText(backend).includes('dotnet format'), 'Backend build/format required.');
   requireCheck(runText(backend).includes('run-backend-tests.mjs') && runText(backend).includes('EnvironmentSafetyChecks'), 'Full backend and environment checks required.');
@@ -51,12 +52,23 @@ export function verify(ci, delivery) {
   requireCheck(backend.env.BATCH1A1_REDIS.includes('127.0.0.1') && backend.env.BATCH1A1_REDIS.includes('defaultDatabase=15'), 'CI Redis must use DB15.');
   requireCheck(backend.services.postgres.image === 'postgres:15-alpine' && backend.services.redis.image === 'redis:7-alpine', 'Disposable CI services required.');
   requireCheck(!backend.services.postgres.volumes && !backend.services.redis.volumes, 'CI cannot mount persistent volumes.');
+  requireCheck(backend.services.postgres.options.includes('--shm-size=512m'), 'Disposable PostgreSQL test shared memory must be explicit.');
+  const databaseStep = backend.steps.find(step => step.run?.includes('node tests/ci/run-backend-tests.mjs'));
+  requireCheck(databaseStep?.env?.LOCAL_SETUP_POSTGRES_PORT === '5432'
+    && databaseStep.run.includes("docker exec '${{ job.services.postgres.id }}'")
+    && databaseStep.run.includes('SELECT system_identifier FROM pg_control_system()')
+    && databaseStep.run.includes('export LOCAL_SETUP_POSTGRES_SYSTEM_IDENTIFIER="$cluster_id"'),
+  'Initializer must pin the independently created local CI PostgreSQL service.');
   requireCheck(backend.services.postgres.ports.includes('127.0.0.1:5432:5432') && backend.services.redis.ports.includes('127.0.0.1:6379:6379'), 'CI service ports must bind loopback.');
-  for (const command of ['npm ci', 'npm run lint', 'node --test tests/*.test.mjs', 'npm run build', 'npm test --prefix tests/ci', 'npm run check --prefix tests/ci'])
+  for (const command of ['npm ci', 'npm run typecheck', 'node --test tests/*.test.mjs', 'npm run build', 'npm test --prefix tests/ci', 'npm run check --prefix tests/ci'])
     requireCheck(runText(frontend).includes(command), 'Frontend build/test/lint/workflow gate missing.');
-  requireCheck(JSON.stringify(list(gate.needs).sort()) === JSON.stringify(['backend', 'frontend']), 'Required gate must join both jobs.');
+  requireCheck(runText(ci.jobs['frontend-lint']).includes('npm run lint') && !ci.jobs['frontend-lint'].needs && !frontend.needs, 'Lint/tests must run in parallel.');
+  requireCheck(runText(frontend).includes('run-frontend-coverage.mjs') && runText(backend).includes('run-backend-tests.mjs'), 'Coverage measurement gates missing.');
+  const coverageStep = frontend.steps.find(s => s.run?.includes('run-frontend-coverage.mjs'));
+  requireCheck(coverageStep.env.COVERAGE_BASE_SHA.includes('github.event.before') && !coverageStep.env.COVERAGE_BASE_SHA.includes('github.sha'), 'No current-commit coverage fallback permitted.');
+  requireCheck(JSON.stringify(list(gate.needs).sort()) === JSON.stringify(['backend', 'frontend', 'frontend-lint']), 'Required gate must join all jobs.');
   requireCheck(gate.if === '${{ always() }}' && runText(gate).includes('quality-gate.mjs'), 'Fail-closed aggregate gate missing.');
-  requireCheck(gate.steps.some(step => step.env?.BACKEND_RESULT === '${{ needs.backend.result }}' && step.env?.FRONTEND_RESULT === '${{ needs.frontend.result }}'), 'Gate must use actual job results.');
+  requireCheck(gate.steps.some(step => step.env?.BACKEND_RESULT === '${{ needs.backend.result }}' && step.env?.FRONTEND_RESULT === '${{ needs.frontend.result }}' && step.env?.LINT_RESULT === '${{ needs.frontend-lint.result }}'), 'Gate must use actual job results.');
   requireCheck(delivery.jobs.quality?.uses === './.github/workflows/ci.yml', 'Delivery must run same-commit quality workflow.');
   requireCheck(!delivery.jobs.quality.secrets, 'CI must not inherit deployment secrets.');
   requireCheck(list(delivery.jobs.candidate.needs).includes('quality') && !delivery.jobs.candidate.if, 'Candidate packaging must require successful quality.');
@@ -66,7 +78,17 @@ export function verify(ci, delivery) {
   requireCheck(publish.if.includes("github.event_name == 'workflow_dispatch'") && publish.if.includes('inputs.publish_image == true') && !/always\(|failure\(/.test(publish.if), 'Automatic/bypassed publication forbidden.');
   requireCheck(publish.if.includes('refs/heads/main') && publish.if.includes('refs/heads/staging'), 'Publication must reject arbitrary branches.');
   requireCheck(!delivery.jobs.deploy && !Object.values(delivery.jobs).some(job => job.environment), 'Unconfigured staging transport/environment cannot be fabricated.');
-  return { workflows: 2, enforcedJobs: Object.keys(ci.jobs).length + Object.keys(delivery.jobs).length, publicationDefault: false };
+  if (staging) {
+    requireCheck(!staging.on.pull_request && !staging.on.pull_request_target, 'Deployment must never execute PR code.');
+    requireCheck(staging.jobs.quality.uses === './.github/workflows/ci.yml' && !staging.jobs.quality.secrets, 'Staging needs secret-free same-commit quality.');
+    for (const name of ['images', 'deploy']) {
+      requireCheck(staging.jobs[name].if?.includes("vars.STAGING_DEPLOYMENT_APPROVED == 'true'") && staging.jobs[name].if.includes('github.ref_name == vars.STAGING_SOURCE_BRANCH'), 'Deployment/image publication requires explicit approval and approved branch.');
+      requireCheck(list(staging.jobs[name].needs).includes('quality'), 'Staging cannot bypass quality.');
+    }
+    requireCheck(staging.jobs.deploy.environment === 'staging' && list(staging.jobs.deploy.needs).includes('images'), 'Protected staging environment and immutable images required.');
+    requireCheck(runText(staging.jobs.deploy).includes('staging-blue-green.mjs --execute'), 'Health/rollback runner missing.');
+  }
+  return { workflows: staging ? 3 : 2, enforcedJobs: [ci, delivery, ...(staging ? [staging] : [])].reduce((n,w) => n + Object.keys(w.jobs).length, 0), publicationDefault: false };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try { console.log(JSON.stringify(verify(...readWorkflows()))); }

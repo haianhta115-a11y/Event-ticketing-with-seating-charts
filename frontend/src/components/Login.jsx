@@ -22,6 +22,7 @@ export default function Login() {
       if (token) {
         localStorage.setItem('token', token);
         
+        /** @type {import('jwt-decode').JwtPayload & {role?: string|string[], Role?: string|string[]}} */
         const decoded = jwtDecode(token);
         const role = decoded['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] || decoded.role || decoded.Role;
         localStorage.removeItem('role');

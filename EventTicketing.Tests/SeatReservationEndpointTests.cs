@@ -92,7 +92,7 @@ public class SeatReservationEndpointTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task HoldEndpoint_WhenPerformanceSalesClosed_Returns400BadRequest_WithSalesClosedMessage()
+    public async Task HoldEndpoint_WhenPerformanceSalesClosed_Returns409Conflict_WithSalesClosedMessage()
     {
         int seatId;
         using (var scope = factory.Services.CreateScope())
@@ -112,7 +112,7 @@ public class SeatReservationEndpointTests : IAsyncLifetime
 
         var response = await client.PostAsJsonAsync($"/api/showtimes/88/seats/{seatId}/hold", new { UserId = 101 });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.False(body.GetProperty("success").GetBoolean());

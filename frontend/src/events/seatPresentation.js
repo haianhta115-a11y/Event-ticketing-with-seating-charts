@@ -5,7 +5,7 @@ export function seatPresentation(seat, categoryColor, pending = false, focused =
   const other = seat.displayStatus === 'HeldByOther';
   const sold = seat.displayStatus === 'Sold';
   const queued = available && pending;
-  const selectable = available || mine;
+  const selectable = available && seat.canSelect !== false || mine;
   const status = available ? (queued ? 'Trống, đã chọn chờ giữ' : 'Trống')
     : mine ? 'Bạn đang giữ' : other ? 'Người khác đang giữ' : sold ? 'Đã bán' : 'Không khả dụng';
   return {

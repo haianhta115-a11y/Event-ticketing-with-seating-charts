@@ -63,3 +63,39 @@ test('403 and failed login do not force logout or redirect', async () => {
   assert.equal(localStorage.getItem('token'), 'keep');
   assert.equal(redirects.length, count);
 });
+
+test('public API expired-session 401 clears session and preserves the return route', async () => {
+  localStorage.setItem('token', token({ exp: 1, role: 'Buyer' }));
+  localStorage.setItem('userId', '101');
+  localStorage.setItem('role', 'Buyer');
+  await assert.rejects(axiosClient.get('/events/open', {
+    adapter: config => {
+      assert.match(config.headers.Authorization, /^Bearer /);
+      return Promise.reject({ config, response: { status: 401 } });
+    },
+  }));
+  for (const key of ['token', 'role', 'userId']) assert.equal(localStorage.getItem(key), null);
+  assert.equal(redirects.at(-1), '/login?returnUrl=%2Fevents%3Fpage%3D2');
+});
+
+test('anonymous public browsing supplies no Authorization and does not redirect', async () => {
+  clearSession();
+  const before = redirects.length;
+  await axiosClient.get('/events/open', { adapter: async config => {
+    assert.equal(config.headers.Authorization, undefined);
+    return { data: { items: [] }, status: 200, statusText: 'OK', headers: {}, config };
+  } });
+  assert.equal(redirects.length, before);
+});
+
+test('reauthentication does not attach a stale stored Bearer token to login', async () => {
+  localStorage.setItem('token', token({ exp: 1, role: 'Buyer' }));
+  const response = await axiosClient.post('/auth/login', { email: 'fixture@example.test', password: 'unused-fixture-input' }, {
+    adapter: async config => {
+      assert.equal(config.headers.Authorization, undefined);
+      return { data: { token: 'new-fixture-token' }, status: 200, statusText: 'OK', headers: {}, config };
+    },
+  });
+  assert.equal(response.data.token, 'new-fixture-token');
+  clearSession();
+});

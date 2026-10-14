@@ -72,6 +72,10 @@ export function createHoldRecovery({ showId, api, readToken, now = () => perform
     } catch (error) {
       if (!current(version, token)) return;
       forget();
+      if (error.response?.data?.errorCode === 'SEAT_MAP_NOT_PUBLIC' && error.response?.status === 403) {
+        publish({ data: { seats: [], hasSeatMap: false }, loading: false, error: null });
+        return;
+      }
       publish({ loading: false, error: error.response?.status === 401 ? 'Phiên đăng nhập đã hết hạn.'
         : error.response?.status === 403 ? 'Bạn không có quyền khôi phục giữ chỗ.'
           : error.response?.status === 404 ? 'Suất diễn không tồn tại.'
@@ -133,14 +137,26 @@ export function createHoldRecovery({ showId, api, readToken, now = () => perform
     }
     busy = true; const version = ++epoch;
     publish({ pending: true, error: null, notice: null });
-    let succeeded = false, notice = null;
+    let succeeded, notice = null, snapshotApplied = false;
     try {
+      const sent = now();
       const result = await api.release(showId, seatId); // no client-supplied owner
       if (!current(version, token)) return false;
       if (result.success !== true) throw new Error('Release not confirmed');
       succeeded = true;
+      if (result.chart) {
+        const sampledClock = serverClock(result.chart.serverTimeUtc, sent, now(), now);
+        const recovered = sessionFromServer(result.session, showId, sampledClock);
+        if (result.chart.seats.some(s => s.id === seatId && s.displayStatus === 'HeldByMe') ||
+            recovered?.heldSeats.some(s => s.id === seatId)) throw new Error('Released seat still owned');
+        clock = sampledClock;
+        publish({ data: result.chart, session: recovered,
+          remainingSeconds: recovered ? Math.max(0, Math.ceil((recovered.deadline - clock()) / 1000)) : 0 });
+        snapshotApplied = true;
+      }
     } catch (error) {
       if (!current(version, token)) return false;
+      succeeded = false;
       forget(); // do not guess Available when a write response is uncertain
       notice = error.response?.status === 401 ? 'Phiên đăng nhập đã hết hạn.'
         : error.response?.status === 403 ? 'Bạn không có quyền nhả ghế này.'
@@ -151,7 +167,7 @@ export function createHoldRecovery({ showId, api, readToken, now = () => perform
       if (alive && token !== readToken()) { forget(); void load(); }
     }
     if (current(version, token)) {
-      await load(); // reread both session and availability; never change/extend its deadline
+      if (!snapshotApplied) await load(); // legacy/uncertain response only; success snapshot needs one HTTP request
       if (alive && token === readToken()) publish({ notice });
     }
     return succeeded;

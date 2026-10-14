@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useHoldRecovery } from '../events/useHoldRecovery';
 import { toggleBatch } from '../events/batchSelection';
+import { seatClick } from '../events/seatClick';
 import { seatMapGeometry, computeFitScale, initialSeatScale, maximumSeatScale, zoomAtPoint } from '../events/seatMapGeometry';
 import { categoryPalette } from '../events/seatImport';
 import { seatPresentation, rowLabels, existingPrice, blockedSeatMessage } from '../events/seatPresentation';
@@ -10,7 +11,8 @@ import { seatPresentation, rowLabels, existingPrice, blockedSeatMessage } from '
  * Tối ưu hóa từng ghế bằng React.memo để tránh render lại toàn bộ hàng nghìn ghế.
  * Không gắn onClick riêng cho từng ghế để đạt hiệu năng cao nhất (dùng event delegation).
  */
-const SeatItem = React.memo(function SeatItem({ seat, pixelX, pixelY, size, categoryColor, isSelected, isPending, showLabel, onClick }) {
+const SeatItem = React.memo(/** @param {{seat: {id:number, row:string, number:string, category?:string, section?:string, displayStatus:string, canSelect?:boolean}, pixelX:number, pixelY:number, size:number, categoryColor?:string, isSelected?:boolean, isPending?:boolean, showLabel?:boolean, onClick?:(seat:object)=>void}} props */
+function SeatItem({ seat, pixelX, pixelY, size, categoryColor, isSelected, isPending, showLabel, onClick }) {
   const visual = seatPresentation(seat, categoryColor, isPending, isSelected);
   const isAvailable = seat.displayStatus === 'Available';
   const number = String(seat.number);
@@ -131,6 +133,7 @@ function SeatMapScreen({ id }) {
   const { data: seatData, loading, error, session, remainingSeconds, pending: isHolding,
     notice: holdError, dismissNotice, refresh, confirmHold, confirmBatch, confirmRelease } = recovery;
   const [batchIds, setBatchIds] = useState([]);
+  const [batchMode, setBatchMode] = useState(false);
   const pendingIds = useMemo(() => new Set(batchIds), [batchIds]);
   const [interactionNotice, setInteractionNotice] = useState(null);
   useEffect(() => {
@@ -143,7 +146,12 @@ function SeatMapScreen({ id }) {
   const selectedSeat = useMemo(() => seatData?.seats?.find(s => s.id === selectedSeatId) ?? null,
     [seatData, selectedSeatId]);
   const setSelectedSeat = useCallback(seat => setSelectedSeatId(seat?.id ?? null), []);
-  const handleSeatClick = useCallback(seat => { setInteractionNotice(null); dismissNotice(); setSelectedSeat(seat); }, [dismissNotice, setSelectedSeat]);
+  const handleSeatClick = useCallback(seat => {
+    setInteractionNotice(null); dismissNotice();
+    void seatClick({ seat, batchMode, pending: isHolding, focus: setSelectedSeat,
+      hold: confirmHold, release: confirmRelease,
+      toggle: picked => setBatchIds(ids => toggleBatch(ids, picked)) });
+  }, [batchMode, isHolding, dismissNotice, setSelectedSeat, confirmHold, confirmRelease]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const countdown = `${Math.floor(remainingSeconds / 60).toString().padStart(2, '0')}:${(remainingSeconds % 60).toString().padStart(2, '0')}`;
   const handleConfirmHold = async () => {
@@ -854,13 +862,18 @@ function SeatMapScreen({ id }) {
       </div>
 
       <div aria-label="Chọn nhiều ghế" style={{ marginBottom: '16px' }}>
+        <label><input type="checkbox" checked={batchMode} disabled={isHolding}
+          onChange={event => { setBatchMode(event.target.checked); setBatchIds([]); }} />
+          Chọn nhiều ghế — chỉ giữ khi xác nhận cả nhóm
+        </label>
+        {!batchMode && <p>Bấm ghế trống để giữ ngay. Bấm lại ghế bạn đang giữ để nhả.</p>}
         <p>Danh sách ghế chọn chờ giữ: {batchIds.length ? batchIds.map(seatId => {
           const seat = seatData?.seats?.find(s => s.id === seatId);
           return seat ? `${seat.row}·${seat.number}` : `#${seatId}`;
         }).join(', ') : 'Chưa chọn ghế'}</p>
         {batchIds.map(seatId => <button key={seatId} aria-label={`Bỏ ghế ${seatId}`} disabled={isHolding}
           onClick={() => setBatchIds(ids => ids.filter(id => id !== seatId))}>Bỏ {seatData?.seats?.find(s => s.id === seatId)?.row}·{seatData?.seats?.find(s => s.id === seatId)?.number ?? seatId}</button>)}
-        <button onClick={handleConfirmBatch} disabled={!batchIds.length || isHolding || isRefreshing}>
+        <button onClick={handleConfirmBatch} disabled={!batchMode || !batchIds.length || isHolding || isRefreshing}>
           {isHolding ? 'Đang giữ...' : `Giữ tất cả ${batchIds.length} ghế cùng lúc`}
         </button>
         <button onClick={() => setBatchIds([])} disabled={isHolding}>Bỏ danh sách chọn</button>

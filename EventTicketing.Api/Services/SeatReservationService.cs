@@ -7,7 +7,8 @@ using Microsoft.Extensions.Options;
 
 namespace EventTicketing.Api.Services;
 
-public sealed class SeatReservationService(AppDbContext db, TimeProvider timeProvider, IOptions<SeatHoldOptions>? options = null) : ISeatReservationService
+public sealed class SeatReservationService(AppDbContext db, IReservationClock clock,
+    IOptions<SeatHoldOptions>? options = null, ILogger<SeatReservationService>? logger = null) : ISeatReservationService
 {
     private readonly TimeSpan holdDuration = TimeSpan.FromMinutes((options?.Value ?? new SeatHoldOptions()).DurationMinutes);
     public const string AlreadyHeldMessage = "ghế vừa có người chọn";
@@ -32,7 +33,7 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
         // Two-int keys are disjoint from the importer's single-bigint advisory keys.
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock({ShowtimeId}, {userId})", cancellationToken);
-        var sampledNow = timeProvider.GetUtcNow().UtcDateTime;
+        var sampledNow = await clock.NowAsync(db, cancellationToken);
         // PostgreSQL timestamps store microseconds. Return the exact persisted deadline,
         // not a 100ns remainder that disappears when S-14 reloads the hold from storage.
         var now = new DateTime(sampledNow.Ticks - sampledNow.Ticks % 10, DateTimeKind.Utc);
@@ -51,6 +52,7 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
 
         if (showtime != null && (showtime.Status != ShowtimeStatus.OnSale || evt?.Status != EventStatus.Published))
         {
+            logger?.LogWarning("Seat hold rejected: {Reason}, showtime {ShowtimeId}, requested count {Count}", "SALES_CLOSED", ShowtimeId, orderedIds.Length);
             return HoldSeatResult.Failed("suất không còn mở bán", HoldFailureReason.SalesClosed, now, rejectedSeatIds: orderedIds);
         }
 
@@ -108,7 +110,10 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
         // Returning without COMMIT rolls back every provisional change, including seats
         // following a conflict. Collect all rejected IDs, never other holders' identities.
         if (rejected.Count > 0)
+        {
+            logger?.LogWarning("Seat hold rejected: {Reason}, showtime {ShowtimeId}, rejected count {Count}", failure.ToString(), ShowtimeId, rejected.Count);
             return HoldSeatResult.Failed(failureMessage!, failure!.Value, now, firstRejectedSeat, rejected);
+        }
 
         // Giữ chỗ thành công! Lấy danh sách toàn bộ các ghế user đang giữ trong phiên này
         var myHeldSeats = await db.Seats
@@ -177,9 +182,19 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
     public async Task<IReadOnlyList<SeatDisplayDto>> GetSeatingChartStatusAsync(
         int ShowtimeId,
         int? currentUserId = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        System.Security.Claims.ClaimsPrincipal? viewer = null)
     {
-        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var now = await clock.NowAsync(db, cancellationToken);
+        bool canHold;
+        try { canHold = await SeatMapAccess.RequireReadAsync(db, ShowtimeId, currentUserId, viewer, now, cancellationToken); }
+        catch (SeatMapAccessException error) when (error.Status == 404)
+        {
+            // Preserve legacy schema-not-ready precedence without reading any seat data.
+            // A missing relationship column must not be disguised as a missing showtime.
+            await db.Database.SqlQuery<int>($"SELECT showtime_id AS \"Value\" FROM seats WHERE FALSE").ToListAsync(cancellationToken);
+            throw;
+        }
 
         var seatsData = await db.Seats
             .AsNoTracking()
@@ -228,7 +243,7 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
             else
             {
                 displayStatus = "Available";
-                canSelect = true;
+                canSelect = canHold;
             }
 
             return new SeatDisplayDto(
@@ -251,7 +266,7 @@ public sealed class SeatReservationService(AppDbContext db, TimeProvider timePro
         int userId,
         CancellationToken cancellationToken = default)
     {
-        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var now = await clock.NowAsync(db, cancellationToken);
 
         var myHeldSeats = await db.Seats
             .AsNoTracking()

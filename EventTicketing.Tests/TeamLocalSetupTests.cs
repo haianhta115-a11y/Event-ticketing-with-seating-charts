@@ -29,6 +29,75 @@ public class TeamLocalSetupTests
         Assert.Throws<InvalidOperationException>(() => FreshLocalDatabase.Validate(value.ConnectionString, target));
     }
 
+    [Theory]
+    [Trait("Category", "Unit")]
+    [InlineData(5432)]
+    [InlineData(55432)]
+    public void ApprovedLocalPortsRequireExactConfiguredEndpoint(int port)
+    {
+        var endpoint = LocalPostgresEndpoint.FromConfiguration(port.ToString(), "123456789");
+        var value = new NpgsqlConnectionStringBuilder { Host = "127.0.0.1", Port = port, Database = Target, Username = "local" };
+        Assert.Equal(port, FreshLocalDatabase.Validate(value.ConnectionString, Target, endpoint).Port);
+        value.Port = port == 5432 ? 55432 : 5432;
+        Assert.Throws<InvalidOperationException>(() => FreshLocalDatabase.Validate(value.ConnectionString, Target, endpoint));
+    }
+
+    [Theory]
+    [Trait("Category", "Unit")]
+    [InlineData("0", "123")]
+    [InlineData("65536", "123")]
+    [InlineData("6543", "123")]
+    [InlineData("5432;Host=remote", "123")]
+    [InlineData("55432 ", "123")]
+    [InlineData("55432", null)]
+    [InlineData("55432", "0")]
+    [InlineData("55432", "invalid")]
+    [InlineData("55432", "00123")]
+    public void UnsafeEndpointApprovalRejectedBeforeConnections(string port, string? identity) =>
+        Assert.Throws<InvalidOperationException>(() => LocalPostgresEndpoint.FromConfiguration(port, identity));
+
+    [Fact]
+    [Trait("Category", "Unit")]
+    public async Task MissingDefaultClusterPinRefusesBeforeAnyConnection()
+    {
+        var endpoint = LocalPostgresEndpoint.FromConfiguration(null, null);
+        Assert.Equal(5432, endpoint.Port);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => FreshLocalDatabase.Initialize(
+            $"Host=127.0.0.1;Port=5432;Username=local;Database={Target}", Target, endpoint));
+    }
+
+    [Theory]
+    [Trait("Category", "Unit")]
+    [InlineData("example.neon.tech", Target)]
+    [InlineData("127.0.0.1,example.test", Target)]
+    [InlineData("/tmp", Target)]
+    [InlineData("127.0.0.1", "event_ticketing")]
+    [InlineData("127.0.0.1", "event_ticketing_db01_restore")]
+    [InlineData("127.0.0.1", "event_ticketing_db02c")]
+    [InlineData("127.0.0.1", "event_ticketing_test_1a1_0d54ff0d02094cd78cc71284befb4ca1")]
+    public void NondefaultPortDoesNotRelaxProtectedNamesOrHosts(string host, string target)
+    {
+        var endpoint = LocalPostgresEndpoint.FromConfiguration("55432", "123456789");
+        var value = new NpgsqlConnectionStringBuilder { Host = host, Port = 55432, Database = target, Username = "local" };
+        Assert.Throws<InvalidOperationException>(() => FreshLocalDatabase.Validate(value.ConnectionString, target, endpoint));
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task WrongClusterPinRefusesBeforeCreatingTarget()
+    {
+        var connection = new NpgsqlConnectionStringBuilder(LocalPostgresDatabase.VerifyDependencies().Postgres)
+        { Database = "event_ticketing_test_team_" + Guid.NewGuid().ToString("N") };
+        var expected = LocalPostgresEndpoint.FromEnvironment();
+        var wrong = LocalPostgresEndpoint.FromConfiguration(connection.Port.ToString(), expected.SystemIdentifier == "1" ? "2" : "1");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => FreshLocalDatabase.Initialize(connection.ConnectionString, connection.Database, wrong));
+        await using var admin = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connection.ConnectionString) { Database = "postgres" }.ConnectionString);
+        await admin.OpenAsync();
+        await using var query = new NpgsqlCommand("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname=@name)", admin);
+        query.Parameters.AddWithValue("name", connection.Database);
+        Assert.False((bool)(await query.ExecuteScalarAsync())!);
+    }
+
     [Fact]
     [Trait("Category", "Unit")]
     public void InitializerRequiresExactEffectiveDatabaseAndNoHistoricalSeedOperations()

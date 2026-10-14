@@ -10,6 +10,7 @@ using EventTicketing.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using EventTicketing.Api.Configuration;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using StackExchange.Redis;
@@ -38,6 +39,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer
 builder.Services.AddHealthChecks().AddCheck<DependencyHealthCheck>("dependencies", tags: ["ready"]);
 builder.Services.AddControllers().AddJsonOptions(options => { options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()); });
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IReservationClock, PostgresReservationClock>();
 builder.Services.AddScoped<ISeatingChartValidator, SeatingChartValidator>();
 builder.Services.AddScoped<EventTicketing.Api.SeatMaps.SeatMapImportService>();
 builder.Services.AddScoped<EventTicketing.Api.SeatMaps.SeatingChartPreparation>();
@@ -131,6 +133,26 @@ app.UseHttpsRedirection();
 app.UseRouting();
 app.UseCors("Frontend");
 app.UseAuthentication();
+// Public browsing stays anonymous when no Bearer credential is supplied. An
+// explicitly supplied invalid/expired credential must not fall back to anonymous
+// access, even on AllowAnonymous endpoints (S-02.4).
+app.Use(async (context, next) =>
+{
+    var authorization = context.Request.Headers.Authorization;
+    var suppliedBearer = authorization.Any(value => value != null
+        && value.StartsWith("Bearer", StringComparison.OrdinalIgnoreCase)
+        && (value.Length == 6 || char.IsWhiteSpace(value[6])));
+    if (suppliedBearer)
+    {
+        var result = await context.AuthenticateAsync(Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme);
+        if (authorization.Count != 1 || !result.Succeeded)
+        {
+            await context.ChallengeAsync(Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme);
+            return;
+        }
+    }
+    await next(context);
+});
 app.UseAuthorization();
 app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).AllowAnonymous();

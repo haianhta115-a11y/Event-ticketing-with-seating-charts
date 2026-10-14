@@ -1,7 +1,8 @@
-# Windows 11: fresh teammate setup (Delivery 02 candidate)
+# Windows 11: fresh teammate setup (Sprint 1 and 2 delivery)
 
-These changes are uncommitted. A fresh `develop` clone will contain them ONLY AFTER
-Delivery 02 is reviewed and merged. Do not claim today's develop already has this setup.
+The endpoint-pinning and explicit-Bearer rules below describe this reviewed delivery
+candidate. Use a `develop` revision containing this delivery AFTER its review/merge;
+do not assume an earlier revision already contains these updates.
 
 ## Requirements and safety
 
@@ -16,7 +17,7 @@ The initializer needs CREATEDB on your own local cluster, not a shared server.
 
 ## Terminal 1 — clone and dependencies
 
-After Delivery 02 is merged:
+After this delivery is reviewed and merged:
 
 ```powershell
 git clone --branch develop https://github.com/minhdoan6543-gif/Event-ticketing-with-seating-charts.git
@@ -60,14 +61,34 @@ An environment password change does not update an existing PostgreSQL volume pas
 
 ## Initialize once, explicitly
 
+Before any initializer/verify/fixture network operation, pin the independently
+verified local PostgreSQL 15 cluster. On YOUR fresh Compose instance only, obtain
+its non-secret system identifier read-only (never use a remote tunnel/shared server):
+
+```powershell
+$env:LOCAL_SETUP_POSTGRES_PORT='5432'
+$env:LOCAL_SETUP_POSTGRES_SYSTEM_IDENTIFIER=(docker compose -f docker-compose.local.yml exec -T postgres psql -X -U $env:DB_USER -d postgres -At -c 'SELECT system_identifier FROM pg_control_system()').Trim()
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify local cluster identity; do not initialize' }
+```
+
+For an independently approved isolated instance on port 55432, explicitly set
+`LOCAL_SETUP_POSTGRES_PORT=55432`, set the system identifier obtained read-only from
+THAT verified instance, and use the same port in the connection string. These are
+not passwords. Only the two approved local ports 5432/55432 are supported; other
+ports require a separately reviewed allowlist change. Missing/malformed pins,
+endpoint/cluster/version mismatches or insufficient identity-query permissions
+fail closed before CREATE DATABASE. Never derive approval from an unverified URL.
+Keep these variables in the configured terminal; reverify identity on later starts.
+
 ```powershell
 dotnet run --project tools/EventTicketing.LocalSetup --no-build -- init --database $env:LOCAL_TEAM_DATABASE
 if ($LASTEXITCODE -ne 0) { throw 'Initialization stopped; preserve target and evidence' }
 dotnet run --project tools/EventTicketing.LocalSetup --no-build -- verify --database $env:LOCAL_TEAM_DATABASE
 ```
 
-The initializer allows only literal 127.0.0.1:5432, exact argument/connection target
-equality and `event_ticketing_test_team_<32 lowercase hex>`. It checks server identity
+The initializer allows only literal 127.0.0.1 at the explicitly approved local port,
+exact argument/connection target equality and `event_ticketing_test_team_<32 lowercase hex>`.
+It checks current_database, server port, pinned system identifier and PostgreSQL 15
 and target absence before CREATE, refuses EVERY existing database (even empty),
 creates its own target using template0 and rechecks emptiness. Schema is generated
 transactionally from the current EF model, excluding ALL HasData seed operations.
@@ -147,6 +168,16 @@ BATCH1A1_REDIS for DB 15, CI_BUILD_CONFIGURATION=Release and FIX03_PLAYWRIGHT po
 to a separately installed Playwright/Chrome test runtime. Run
 `node tests/ci/run-backend-tests.mjs`; fixtures create new isolated DBs, Redis prefixes
 and ephemeral browser ports, without cleanup. Required skipped/missing tests fail.
+Also supply LOCAL_SETUP_POSTGRES_PORT and LOCAL_SETUP_POSTGRES_SYSTEM_IDENTIFIER
+for the independently verified cluster, including the default port 5432, because
+the full suite exercises the initializer's fail-closed instance-identity guards.
+
+Anonymous public API browsing remains available without Authorization. Explicitly
+supplied expired/invalid Bearer credentials return 401 even on public routes; the
+frontend clears that session and redirects to login with its original returnUrl.
+Valid credentials retain the existing role/ownership policies; 403 is not a logout.
+Login requests authenticate the supplied email/password and do not automatically
+attach a stale stored token; explicitly supplied invalid Bearer headers are still rejected.
 
 Production frontend defaults to same-origin `/api`; deployment requires reverse proxy
 or approved build-time VITE_API_BASE_URL, CORS and HTTPS activation page. VITE_* is

@@ -18,6 +18,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using EventTicketing.Api.Data;
 using Npgsql;
+using StackExchange.Redis;
 
 namespace EventTicketing.Tests.Infrastructure;
 
@@ -29,6 +30,7 @@ internal sealed class LocalApplicationFactory(LocalPostgresDatabase database) : 
     public FakeEmailDelivery Email { get; } = new();
     public TestClock Clock { get; } = new();
     public bool UseTestClock { get; set; }
+    public TimeProvider? HostClockOverride { get; set; }
     public bool EnableCleanup { get; set; }
     public int? HoldDurationMinutes { get; set; }
     public int? LoadTestPoolSize { get; set; }
@@ -82,10 +84,24 @@ internal sealed class LocalApplicationFactory(LocalPostgresDatabase database) : 
         builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new PeerAddressFilter(peerAddress)));
         builder.ConfigureServices(services =>
         {
+            // Reuse the real connection already opened/PINGed asynchronously by
+            // the fixture. An instance registration is fixture-owned, so disposing
+            // one API host must not close Redis for another host of this fixture.
+            services.RemoveAll<IConnectionMultiplexer>();
+            services.AddSingleton<IConnectionMultiplexer>(database.Redis);
             if (DbInterceptors.Length > 0) services.AddDbContext<AppDbContext>(options => options.AddInterceptors(DbInterceptors));
             services.RemoveAll<IEmailDelivery>();
             services.AddSingleton<IEmailDelivery>(Email);
-            if (UseTestClock) { services.RemoveAll<TimeProvider>(); services.AddSingleton<TimeProvider>(Clock); }
+            if (HostClockOverride != null)
+            {
+                services.RemoveAll<TimeProvider>(); services.AddSingleton(HostClockOverride);
+            }
+            if (UseTestClock)
+            {
+                services.RemoveAll<TimeProvider>(); services.AddSingleton<TimeProvider>(Clock);
+                services.RemoveAll<EventTicketing.Api.Services.IReservationClock>();
+                services.AddSingleton<EventTicketing.Api.Services.IReservationClock>(Clock);
+            }
         });
     }
 }

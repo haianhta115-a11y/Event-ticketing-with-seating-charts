@@ -1,4 +1,6 @@
+/** @returns {Record<string,string>} */
 export function validateEvent(form) {
+  /** @type {Record<string,string>} */
   const errors = {};
   for (const [field, label, limit] of [['name', 'Tên sự kiện', 200], ['description', 'Mô tả', null], ['location', 'Địa điểm', 300]]) {
     if (!form[field]?.trim()) errors[field] = `${label} là bắt buộc.`;
@@ -16,7 +18,9 @@ export function vietnamToUtc(value) {
   return date.toISOString();
 }
 
+/** @returns {Record<string,string>} */
 export function validateShowtime(startTime, endTime, now = Date.now()) {
+  /** @type {Record<string,string>} */
   const errors = {};
   let start;
   try { start = new Date(vietnamToUtc(startTime)).getTime(); }
@@ -36,7 +40,9 @@ export function formatVietnamTime(value) {
   }) : '';
 }
 
+/** @returns {Record<string,string>} */
 export function apiErrors(error) {
+  /** @type {Record<string,string>} */
   const errors = {};
   for (const [key, messages] of Object.entries(error?.response?.data?.errors || {})) {
     const field = key.replace(/^\$\./, '');

@@ -9,13 +9,13 @@ export default function CreateEvent() {
   const gate = useRef(submissionGate());
   const [loading, setLoading] = useState(Boolean(id));
   const [loadError, setLoadError] = useState('');
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(/** @type {{name:string, description:string, location:string, imageUrl?:string}} */ ({
     name: '',
     description: '',
     location: '',
-  });
+  }));
 
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState(/** @type {Record<string,string>} */ ({}));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generalError, setGeneralError] = useState('');
   useEffect(() => {
@@ -165,7 +165,7 @@ export default function CreateEvent() {
           <textarea
             id="description"
             name="description"
-            rows="5"
+            rows={5}
             value={formData.description}
             onChange={handleChange}
             placeholder="Giới thiệu nội dung, nghệ sĩ tham gia và các thông tin cần lưu ý..."

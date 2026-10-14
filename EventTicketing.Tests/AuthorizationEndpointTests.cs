@@ -78,6 +78,49 @@ public sealed class AuthorizationEndpointTests : IAsyncLifetime
     public async Task ProtectedRead_Anonymous_Returns401(string path) =>
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(path)).StatusCode);
 
+    [Theory]
+    [InlineData("/api/events/open", "anonymous", 200)]
+    [InlineData("/api/events/open", "valid", 200)]
+    [InlineData("/api/events/open", "expired", 401)]
+    [InlineData("/api/events/open", "malformed", 401)]
+    [InlineData("/api/events/open", "signature", 401)]
+    [InlineData("/api/events/open", "empty", 401)]
+    [InlineData("/api/events/admin", "anonymous", 401)]
+    [InlineData("/api/events/admin", "valid", 200)]
+    [InlineData("/api/events/admin", "expired", 401)]
+    [InlineData("/api/events/admin", "malformed", 401)]
+    [InlineData("/api/events/admin", "signature", 401)]
+    [InlineData("/api/events/admin", "empty", 401)]
+    public async Task ExplicitBearerCredentialsNeverFallBackToAnonymous(string path, string kind, int status)
+    {
+        if (kind != "anonymous")
+        {
+            var token = kind switch
+            {
+                "valid" => factory.Token(501, ["Admin"]),
+                "expired" => factory.Token(501, ["Admin"], DateTime.UtcNow.AddMinutes(-5)),
+                "signature" => factory.Token(501, ["Admin"], wrongSignature: true),
+                "empty" => "",
+                _ => "not-a-jwt"
+            };
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer " + token);
+        }
+        using var response = await client.GetAsync(path);
+        Assert.Equal(status, (int)response.StatusCode);
+        if (status == 401) Assert.Contains(response.Headers.WwwAuthenticate, header => header.Scheme == "Bearer");
+        Assert.DoesNotContain(factory.Logs.Messages, message => message.Contains("not-a-jwt"));
+    }
+
+    [Theory]
+    [InlineData("/api/events/open")]
+    [InlineData("/api/events/admin")]
+    public async Task DuplicateBearerHeadersAreRejected(string path)
+    {
+        var token = factory.Token(501, ["Admin"]);
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", ["Bearer " + token, "Bearer " + token]);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(path)).StatusCode);
+    }
+
     [Fact]
     public async Task ProtectedMutation_Anonymous_CannotUseClientIdentity()
     {
