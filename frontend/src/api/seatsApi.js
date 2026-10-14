@@ -1,4 +1,6 @@
 import axiosClient from './axiosClient';
+import { batchHoldApi } from '../events/batchSelection';
+export const holdSeats = (showId, ids) => batchHoldApi(axiosClient, showId, ids);
 
 /**
  * Lấy sơ đồ và trạng thái ghế của suất diễn từ Backend thật

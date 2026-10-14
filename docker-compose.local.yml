@@ -1,0 +1,17 @@
+name: event-ticketing-team-local
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:?Set your own local DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Supply your own local password privately}
+      POSTGRES_DB: postgres
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["team_pgdata:/var/lib/postgresql/data"]
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: ["team_redisdata:/data"]
+volumes:
+  team_pgdata:
+  team_redisdata:

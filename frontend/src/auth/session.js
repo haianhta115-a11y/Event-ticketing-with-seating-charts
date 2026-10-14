@@ -21,4 +21,5 @@ export function hasAnyRole(allowedRoles, session = getSession()) {
 
 export function clearSession(storage = localStorage) {
   for (const key of ['token', 'role', 'userId']) storage.removeItem(key);
+  if (typeof globalThis.window?.dispatchEvent === 'function') window.dispatchEvent(new Event('sessionchange'));
 }

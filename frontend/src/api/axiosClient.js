@@ -1,8 +1,9 @@
 import { clearSession } from '../auth/session.js';
 import axios from 'axios';
+import { apiBaseUrl } from './apiConfiguration.js';
 
 // 1. T? d?ng l?y URL t? file .env, n?u kh�ng c� th� tr? th?ng v? Backend Render
-const API_URL = 'http://localhost:5009/api';
+const API_URL = apiBaseUrl(import.meta.env?.VITE_API_BASE_URL);
 
 const axiosClient = axios.create({
     baseURL: API_URL,

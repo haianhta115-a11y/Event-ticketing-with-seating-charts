@@ -1,0 +1,17 @@
+# Deny repository content, then allow only API build inputs.
+**
+!Dockerfile
+!.dockerignore
+!EventTicketing.Api/
+!EventTicketing.Api/**
+EventTicketing.Api/bin/**
+EventTicketing.Api/obj/**
+EventTicketing.Api/.local-mail/**
+EventTicketing.Api/**/.local-mail/**
+EventTicketing.Api/**/appsettings.Local.json
+EventTicketing.Api/appsettings.Development.json
+EventTicketing.Api/**/*.user
+EventTicketing.Api/**/.env*
+EventTicketing.Api/**/*.dump
+EventTicketing.Api/**/*.bak
+EventTicketing.Api/**/*.log

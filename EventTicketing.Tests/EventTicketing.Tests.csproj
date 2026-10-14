@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EventTicketing.Api\EventTicketing.Api.csproj" />
+    <ProjectReference Include="..\tools\EventTicketing.LocalSetup\EventTicketing.LocalSetup.csproj" />
   </ItemGroup>
 
 </Project>

@@ -19,10 +19,15 @@ export async function previewChart(client, showtimeId, file) {
   return (await client.post(`/showtimes/${showtimeId}/seats/preview`, body)).data;
 }
 
+export function categoryPalette(categoryNames) {
+  const compare = (a, b) => a.localeCompare(b, 'vi', { numeric: true });
+  const names = [...new Set(categoryNames)].sort(compare);
+  return names.map((name, i) => ({ name, color: `hsl(${Math.round(i * 137.508) % 360} 65% 75%)` }));
+}
+
 export function previewGrid(seats) {
   const compare = (a, b) => a.localeCompare(b, 'vi', { numeric: true });
-  const names = [...new Set(seats.map(s => s.category))].sort(compare);
-  const categories = names.map((name, i) => ({ name, color: `hsl(${Math.round(i * 137.508) % 360} 65% 75%)` }));
+  const categories = categoryPalette(seats.map(s => s.category));
   const color = new Map(categories.map(c => [c.name, c.color]));
   const rows = new Map();
   for (const seat of seats) {

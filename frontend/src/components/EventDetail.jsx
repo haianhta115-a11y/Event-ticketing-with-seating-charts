@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getEventById, getShowtimes, updateShowtimeSalesStatus, uploadSeatingChart, previewSeatingChart, publishEvent } from '../api/eventsApi';
+import { getEventById, getShowtimes, updateShowtimeSalesStatus, uploadSeatingChart, previewSeatingChart, publishEvent, unpublishEvent } from '../api/eventsApi';
 import { EVENT_STATUS, getEventStatusInfo, SHOWTIME_STATUS, getShowtimeStatusInfo } from '../constants/eventStatus';
 import ShowtimeForm from './ShowtimeForm';
 import SeatingChartPreview from './SeatingChartPreview';
 import { formatVietnamTime, apiMessage, submissionGate } from '../events/management';
 import { importMessage } from '../events/seatImport';
+import { salesDisabledReason } from '../events/sales';
 
 const formatDateTime = formatVietnamTime;
 
@@ -49,7 +50,7 @@ function EventDetailScreen({ id }) {
           : 'Đã đóng bán suất diễn thành công!'
       );
     } catch (err) {
-      setActionError(err?.message || 'Có lỗi xảy ra khi đổi trạng thái');
+      setActionError(apiMessage(err, 'Có lỗi xảy ra khi đổi trạng thái'));
     } finally {
       setActionLoadingId(null);
     }
@@ -64,14 +65,25 @@ function EventDetailScreen({ id }) {
     setActionLoadingId('publish');
 
     try {
-      await publishEvent(event.id);
-      setEvent(prev => ({ ...prev, status: EVENT_STATUS.PUBLISHED }));
+      const updated = await publishEvent(event.id);
+      setEvent(prev => ({ ...prev, status: updated.status }));
       alert("Xuất bản sự kiện thành công!");
     } catch (err) {
-      setActionError(err?.message || 'Có lỗi khi xuất bản sự kiện');
+      setActionError(apiMessage(err, 'Có lỗi khi xuất bản sự kiện'));
     } finally {
       setActionLoadingId(null);
     }
+  };
+
+  const handleUnpublishEvent = async () => {
+    if (!window.confirm('Ẩn sự kiện khỏi trang công khai? Giữ chỗ hiện tại vẫn giữ nguyên thời hạn.')) return;
+    setActionLoadingId('publish'); setActionError(null); setActionSuccess(null);
+    try {
+      const updated = await unpublishEvent(event.id);
+      setEvent(prev => ({ ...prev, status: updated.status }));
+      setActionSuccess('Đã ẩn sự kiện khỏi trang công khai.');
+    } catch (err) { setActionError(apiMessage(err)); }
+    finally { setActionLoadingId(null); }
   };
 
   const [uploadingId, setUploadingId] = useState(null);
@@ -389,6 +401,9 @@ function EventDetailScreen({ id }) {
         <SeatingChartPreview preview={chartPreview} attempted={chartAttempted} busy={uploadingId !== null}
           onConfirm={confirmSeatMap} onCancel={() => { setChartPreview(null); setChartAttempted(false); }} />
 
+        {event.status === EVENT_STATUS.PUBLISHED && (
+          <button onClick={handleUnpublishEvent} disabled={actionLoadingId !== null}>Ngừng xuất bản sự kiện</button>
+        )}
         {/* Thông báo lỗi / thành công khi đổi trạng thái mở/đóng bán */}
         {actionError && (
           <div
@@ -587,7 +602,7 @@ function EventDetailScreen({ id }) {
                     </span>
 
                     {/* Nút Upload Sơ đồ ghế */}
-                    {!s.hasSeatMap && (
+                    {(
                       <label
                         style={{
                           padding: '6px 14px',
@@ -601,7 +616,7 @@ function EventDetailScreen({ id }) {
                           opacity: uploadingId === s.id ? 0.6 : 1,
                         }}
                       >
-                        {uploadingId === s.id ? 'Đang tải...' : 'Tải lên Sơ đồ (JSON)'}
+                        {uploadingId === s.id ? 'Đang tải...' : s.hasSeatMap ? 'Thay Sơ đồ (JSON)' : 'Tải lên Sơ đồ (JSON)'}
                         <input
                           type="file"
                           accept=".json"
@@ -615,7 +630,8 @@ function EventDetailScreen({ id }) {
                     {/* SCRUM-87: Nút Mở bán / Đóng bán */}
                     <button
                       onClick={() => handleToggleSales(s)}
-                      disabled={actionLoadingId === s.id || (!s.hasSeatMap && s.status !== SHOWTIME_STATUS.ON_SALE)}
+                      disabled={actionLoadingId !== null || !!salesDisabledReason(event, s)}
+                      title={salesDisabledReason(event, s)}
                       style={{
                         padding: '6px 14px',
                         borderRadius: '6px',
@@ -640,6 +656,7 @@ function EventDetailScreen({ id }) {
                         ? 'Mở lại'
                         : 'Mở bán'}
                     </button>
+                    {salesDisabledReason(event, s) && <small>{salesDisabledReason(event, s)}</small>}
                   </div>
                 </div>
               );

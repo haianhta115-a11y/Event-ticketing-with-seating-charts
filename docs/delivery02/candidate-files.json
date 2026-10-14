@@ -1,0 +1,693 @@
+{
+  "version": 1,
+  "repository": "minhdoan6543-gif/Event-ticketing-with-seating-charts",
+  "base": "32b0416d1e1052241ba1e78c8a36975b324b705a",
+  "sourceBranch": "codex/fix-01-s07",
+  "codeOnly": true,
+  "blockedCriteria": [
+    "S-07.3",
+    "S-08.3",
+    "S-12.4"
+  ],
+  "migrationPolicy": "Never execute historical EF chain or DB03B; sales-audit-schema.sql is definition-only",
+  "counts": {
+    "total": 83,
+    "added": 52,
+    "modified": 31,
+    "deleted": 0
+  },
+  "entries": [
+    {
+      "path": ".dockerignore",
+      "group": "ci",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "9dcfa601b03903d358efc52f873360f2819307cf8c766274f396f345a3f669f4",
+      "gitBlob": "d7d7233a955fde9b9c942c725d85a659ca19c071"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "group": "ci",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "f4db674678c8a67ff8606773dd5356accf6b84c923621de9d64d4f95fe043e06",
+      "gitBlob": "4d62b806c96dc86cd387590d7898009433d6c2f0"
+    },
+    {
+      "path": ".github/workflows/deploy-staging.yml",
+      "group": "ci",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "205801e275cd4a94073bc2a337cbd12d974addb9cd5ddd7937024d7216b81529",
+      "gitBlob": "e6f5a211485268e538535c2968a9a5a2af915cb0"
+    },
+    {
+      "path": "EventTicketing.Api/BackgroundServices/ExpiredSeatHoldCleanupService.cs",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "d57660f38c1d17189b9e78c0b9e663621b0be91c0c2e5d9dc10ecc853f0d5e25",
+      "gitBlob": "26aaaf2f566ae54167038bec32772e5e36c5da44"
+    },
+    {
+      "path": "EventTicketing.Api/Configuration/RedisKeyScope.cs",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "f222caaffc6e67e0fe692941c2937c507ffa1b4ea1207b605112b9dc8bc6306f",
+      "gitBlob": "05607d1aa4c0f929576dad041df71d94c43843b8"
+    },
+    {
+      "path": "EventTicketing.Api/Configuration/SeatHoldOptions.cs",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "8ead5682f22bcf3346a22ae44a1d4d1e608ac4e4770f9ebbd70584bba9db5941",
+      "gitBlob": "f6bdcf9e60ecc6a7dbac264675a413172295d388"
+    },
+    {
+      "path": "EventTicketing.Api/Controllers/SalesController.cs",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "47d4b1e9bd78d104097c2d58c26cecf4f038eacebd3cad4cd60ffb214b005cd5",
+      "gitBlob": "c84a9c3939c13e5094015a39d56cb32d10347cdc"
+    },
+    {
+      "path": "EventTicketing.Api/Data/AppDbContext.cs",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "bf81664cae62ad473c984f66648939fee9fdeee0252d0afc1906f1d8f0898f51",
+      "gitBlob": "beb381076055271f535e3ee58b314beb00c798f3"
+    },
+    {
+      "path": "EventTicketing.Api/Email/EmailDelivery.cs",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "0abdb0226deda43784b4820369fa79147c6680971f26886d980bf70e4b959f21",
+      "gitBlob": "5ce9d7e2c356c817251aba9af1d823a634647a11"
+    },
+    {
+      "path": "EventTicketing.Api/Endpoints/PublicEventEndpoints.cs",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "39ea30d1f14fe24ca5b2330f6e244006fba0c23bd1f58963375bbfae0c5b9b48",
+      "gitBlob": "869daae2d6f50bdd6da653e46f8ab521a996e395"
+    },
+    {
+      "path": "EventTicketing.Api/Endpoints/SeatReservationEndpoints.cs",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "c2b3423bbeb6c3b196245002570d4664f6c25bdf18382adc7aa21313abcc6414",
+      "gitBlob": "92b7f43a16334621cf95a2c87da6e9e7036a2548"
+    },
+    {
+      "path": "EventTicketing.Api/Entities/SalesTransition.cs",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "8bd8a1c657bfc829838fd19fae0f01f031532abbb9a41bf28b41d09dfdeb3138",
+      "gitBlob": "9e4f8f81b9b9638b1bd34831a243081761809899"
+    },
+    {
+      "path": "EventTicketing.Api/Program.cs",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "b22cd0c2d89f1524f5bf37cd85dcf2473c7807e849df79e6cad84d60db6ea915",
+      "gitBlob": "902f31573922afe6093424ecaac4dcde494013ea"
+    },
+    {
+      "path": "EventTicketing.Api/Security/LoginAttemptLimiter.cs",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "28ce41b08d1c76092d5beadbed9c0c1b4b8c6dd831ee7d0da8c3568601096582",
+      "gitBlob": "aaa4e09c431dc16b6eb98dc11c280feb283e7e28"
+    },
+    {
+      "path": "EventTicketing.Api/Services/ExpiredSeatHoldCleanup.cs",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "6dd460e2fa6243b5f02223160a59dc1f45b2294103ba644db32cc2d1ef751b9a",
+      "gitBlob": "cc1f1ae9beaaf0f9eb8f5b0f46620ea988e192d5"
+    },
+    {
+      "path": "EventTicketing.Api/Services/ISeatReservationService.cs",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "6421cf348f2f7668b5a6d504ee82c06024b1ef640907c9245c089fceabb9483c",
+      "gitBlob": "1ed460ed448fc228eed0a514cff2b91e5ffd4327"
+    },
+    {
+      "path": "EventTicketing.Api/Services/RegistrationService.cs",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "7026890f9873d9dd25c3b7422fc827c5be4d1112e1f05a268435a2d0b9ece969",
+      "gitBlob": "514d931b95c908bc825d3fcb4c04d5b650b6a207"
+    },
+    {
+      "path": "EventTicketing.Api/Services/SalesStatusService.cs",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "f0f033de16bacf777d6813a488e716d0312813039c1d95c23596b1e8170e8665",
+      "gitBlob": "f52f6fab13c278031a7bbeb40d7587fb10f43497"
+    },
+    {
+      "path": "EventTicketing.Api/Services/SeatReservationService.cs",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "4aab227a40dea16e1a52d620ad3adb20b57faf0e86c14508f60b230f6177eb4d",
+      "gitBlob": "71e58639d13db3e98e0a1e0a9303741ebd137ce5"
+    },
+    {
+      "path": "EventTicketing.Tests/AuthorizationEndpointTests.cs",
+      "group": "tests",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "3a1205ac4a218e296d5f08afa8f6b7c251da2ce18a23f7ecacc810323c14619f",
+      "gitBlob": "2dfd1b2a22155b3aff268ba5f83c163654bbee3c"
+    },
+    {
+      "path": "EventTicketing.Tests/BatchHoldApiTests.cs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "ffb4c0f01d91eed3d642557dad809837747b860784f4a81b17c24abc2aafc68c",
+      "gitBlob": "9ae44ee11cc22a51ca04d8f1c257b7e752c15eac"
+    },
+    {
+      "path": "EventTicketing.Tests/BrowseAndReleaseTests.cs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "63ffe98d4093ef878f4f3f74b55ba5a482229c2b022fbfc50a6400a0cb1b081d",
+      "gitBlob": "257d1c0fb97c31d1c454bda8d6d4438dc2b5852f"
+    },
+    {
+      "path": "EventTicketing.Tests/EventTicketing.Tests.csproj",
+      "group": "tests",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "e822deda1f49dbf5ccb84c2cc7680be006017e8eb6fd539426d65dbe5475f0eb",
+      "gitBlob": "b4d231553fb6e2ab00a3887713768a6d314803dd"
+    },
+    {
+      "path": "EventTicketing.Tests/ExpiredHoldCleanupTests.cs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "594aef338aed98901fcdf4be2f8822b81453d5623347556899842a630bade735",
+      "gitBlob": "9b59dd4a09a2244c0209ade4b486649a72a63559"
+    },
+    {
+      "path": "EventTicketing.Tests/Infrastructure/LocalApplicationFactory.cs",
+      "group": "tests",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "484c658cb472cb8906a54437939b02f516d2ab04761d453b23e4886290802f43",
+      "gitBlob": "c3d8e53772016d74bf9f3578c7639b6709e6b70b"
+    },
+    {
+      "path": "EventTicketing.Tests/Infrastructure/LocalPostgresDatabase.cs",
+      "group": "tests",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "9a7802e5cf0140215616b2099a892994a84064654266738d64c36246b6c4dc0d",
+      "gitBlob": "2bf64840e1c6461a73f25a464c2e261df302c154"
+    },
+    {
+      "path": "EventTicketing.Tests/RegistrationActivationTests.cs",
+      "group": "tests",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "2d612c548aa5dd05efd5649344ab7263fe315485b5920213d9515259065d625d",
+      "gitBlob": "f07e7dea2d8b8750ce1beabd6712581f9ebbe315"
+    },
+    {
+      "path": "EventTicketing.Tests/SalesWorkflowTests.cs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "fb4cdfbdfa6e7552944fb1abd1ebaf12b8c40ed7274fcb4bf623c7d8989b251b",
+      "gitBlob": "028d0748dc8e403e7789f3ad901f32ac01c355b9"
+    },
+    {
+      "path": "EventTicketing.Tests/TeamLocalSetupTests.cs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "3b22bab759233ded4ac9bef1f247cab055e228c2aa420163083907937be9f3e6",
+      "gitBlob": "08a75d58f18d7eb236f08d1d2d633304d9d0c64d"
+    },
+    {
+      "path": "EventTicketing.slnx",
+      "group": "setup",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "f2f70010f4bd8c434d70bcb555562ea7b09b78a7f5702f16a778251ccc2afdf1",
+      "gitBlob": "8b38bd6aa48064064fab4272c70823cd9d216abb"
+    },
+    {
+      "path": "README.md",
+      "group": "documentation",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "e20a093ad95df4da634d9c681c82b306f0442d05aa05e710263dbde5282dacc9",
+      "gitBlob": "7bbd1361c03623bc3044117595dc4f13335cab28"
+    },
+    {
+      "path": "docker-compose.local.yml",
+      "group": "setup",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "a27ed784ee6a6931a928a01b83879d6b346dfc36912f317bf0a0d069dbd6a24c",
+      "gitBlob": "f5bfd6696aa4c7a5a29be354156cbc6b1b5afccb"
+    },
+    {
+      "path": "docs/delivery02/INCREMENTAL-DELIVERY-02.md",
+      "group": "documentation",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "27f305d9b364e1d6fe5fbe12fce7e3084474c1926e30059145ecd189c0a049d8",
+      "gitBlob": "92ce035416439824585fb39ec7ddf42963c62aef"
+    },
+    {
+      "path": "docs/delivery02/candidate-files.json",
+      "group": "documentation",
+      "action": "added",
+      "mode": "100644",
+      "sha256": null,
+      "reason": "Self manifest; nonrecursive metadata"
+    },
+    {
+      "path": "docs/fix01/sales-audit-schema.sql",
+      "group": "documentation",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "a69d610b46b907e7a1ce07d6f45f4f37bae2ff2a7937a03051f63744c662d808",
+      "gitBlob": "12df2f2273f739f3f6ee2bf29cf507e40ff84304"
+    },
+    {
+      "path": "docs/team-ready/LOCAL-SETUP.md",
+      "group": "documentation",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "2b84c6bba721403c03201da313e32ac3700a1e88f6ea2e83e9552a772bb502c6",
+      "gitBlob": "545cf1c0a213285d0515568e9dd830502aa0072d"
+    },
+    {
+      "path": "docs/team-ready/NEON-COMPATIBILITY.md",
+      "group": "documentation",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "1ead785137931cf48858a2a0d9547f8d3ea30ac187cf2ac69f1a8dd0e67f6bee",
+      "gitBlob": "163b04926136e4969952e59d628216de2f1511f4"
+    },
+    {
+      "path": "docs/team-ready/TEAM-READY-01-report.md",
+      "group": "documentation",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "3e090f9f117e7e0dece0d1aeffde390687281a148a9492417710e4baf97b48fc",
+      "gitBlob": "7dabd881c15612083077b935cd8dbd324ae98956"
+    },
+    {
+      "path": "frontend/.env.example",
+      "group": "setup",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "78e274df14b22be9fa522b485b77ae20bc479b3441bacd68cda9df76479fdac2",
+      "gitBlob": "00f8bb10a5d47b273ddf4ef35ddbb3251829fd65"
+    },
+    {
+      "path": "frontend/src/api/apiConfiguration.js",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "12a7f60637cb2aad861b9457744e42dac5afc71738e6b45fa7208df162ebcfb1",
+      "gitBlob": "73b646fd68e444f339f8dc8bde117ee4703ef758"
+    },
+    {
+      "path": "frontend/src/api/axiosClient.js",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "f4e565fb5b34aecd3e76855e88be1a4bd679f4f410454123d8be3a8e89019ffd",
+      "gitBlob": "575533ad676bffacf3df5577cb7e6b56ae2e26d5"
+    },
+    {
+      "path": "frontend/src/api/eventsApi.js",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "6d547f511cf5c9e9dd43100ef90171375cfde9367a0377257b6c456f5bf73a04",
+      "gitBlob": "93c3b127301b52bb35e42c4263b940060eb65304"
+    },
+    {
+      "path": "frontend/src/api/seatsApi.js",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "d1e24bfc4b701f34e7858efbb8873d28458237f1fed55fb16c3e4fef427630a3",
+      "gitBlob": "7422f9907840cd7b308c28843b0dc44b8541474e"
+    },
+    {
+      "path": "frontend/src/auth/session.js",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "faa0c55bb0e50db8531f5e9b9d5a6434ca942346e163e47518bf0e6b40a814a0",
+      "gitBlob": "1cb0a1697e53143f91f6b2d3afac06a2e3b09a07"
+    },
+    {
+      "path": "frontend/src/components/EventDetail.jsx",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "263a8785a797165d2bf139686da6e3a8cdb76e15e49a8a5ede16eeeb0dd38a87",
+      "gitBlob": "d82779e93b8026b8a79c82bb2bfeee405ccaae22"
+    },
+    {
+      "path": "frontend/src/events/batchSelection.js",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "afa4652c2ff2ad4833d11452a174a5f7ed5500bd7dc0c34e833c2bda207dbe48",
+      "gitBlob": "687c63e18cbc343d7c1b738e52833be9113a74e9"
+    },
+    {
+      "path": "frontend/src/events/holdRecovery.js",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "ed9483e6a1fcd5f6b5c155cd01e3a40ba2a64d6f960f49f47ef1fd607f519704",
+      "gitBlob": "fc212a1ad38607ee61a00cb4165bb0646859e8d8"
+    },
+    {
+      "path": "frontend/src/events/publicEvents.js",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "def837cebc5c6041e13ea694e6daeaa49a05348e08ecba228057bd86a7757c79",
+      "gitBlob": "984353281553f061bd872e7ab404f5cc042b6c31"
+    },
+    {
+      "path": "frontend/src/events/sales.js",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "17651afe8cb94b6af7a32730cb0d023d7d9c806964f5d096c84760ca50dff1d2",
+      "gitBlob": "99c56b3ea87dad9369749b6c4e0bb532f9afc1b0"
+    },
+    {
+      "path": "frontend/src/events/seatImport.js",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "170b5ea18005f414e6d430fe280b470b6bd315d501c92b3318cf7a0d4d1d61ab",
+      "gitBlob": "138feb85c23ee3741c59198516f95a6dc38ae254"
+    },
+    {
+      "path": "frontend/src/events/seatMapGeometry.js",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "a6479a993b9bec7d5be4f2c2219622df7ac5ca0baa7b098e20108e0f37ef93dd",
+      "gitBlob": "4d452a3ad9fa5ee3f58a0862fa5bc3220207d43f"
+    },
+    {
+      "path": "frontend/src/events/seatPresentation.js",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "61bdbbefe251ac7d3f91432d85ed3d3992b80732d42903f71c555e42117d9373",
+      "gitBlob": "099d73ea1586a69b0623e6220b73181c2f0c8fb9"
+    },
+    {
+      "path": "frontend/src/events/useHoldRecovery.js",
+      "group": "production",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "79d0b91b085fdecee4ecbedf4483124b282136cede657a635d6650a5a28c59c7",
+      "gitBlob": "bd0b6760599df66c53f16f43bc650a7b5dbbc596"
+    },
+    {
+      "path": "frontend/src/pages/Home.jsx",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "9c520c1c1c06eeafb0c062010315de13516892fa830039b81b4ed46e46174fb1",
+      "gitBlob": "3b61fcc66be49b2849cf5ff1d4b15e20d0eb3a65"
+    },
+    {
+      "path": "frontend/src/pages/SeatMap.jsx",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "cc5da66a6700c428d90038b913968fd288fff1107cbe577d39e0460846f576b6",
+      "gitBlob": "6f7de2fb65839a95ec263b82cdbeef1bce4444db"
+    },
+    {
+      "path": "frontend/src/pages/ShowtimeDetail.jsx",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "d9cd419dad2fdff5c592ff6027774f0acbb5b8ef05df553533ac8e036dd47359",
+      "gitBlob": "d51134b28038993de21864ab338d737f35da3dce"
+    },
+    {
+      "path": "frontend/tests/apiConfiguration.test.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "479674de068dcc7191ba0272b6061c386872dad6754accf3ddc610ad081a48bb",
+      "gitBlob": "fbe8482d129fe97d8326cd2818b5d50a679e4a94"
+    },
+    {
+      "path": "frontend/tests/batchSelection.test.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "f7dae00a723ec98f1da54eb627b6c702424ae0062aa384bfd78c5f4ad3842bff",
+      "gitBlob": "813cf833aed930f5670bf394ffcdde3ff13c6b57"
+    },
+    {
+      "path": "frontend/tests/browser/batchHold.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "2cff29a6677e95df45bbb3da38b92b5ffd2edcec55c0e62acb8da4da83a686e2",
+      "gitBlob": "d9080c5f58c2b8938c2f088a4d288fddf96f29bd"
+    },
+    {
+      "path": "frontend/tests/browser/browseRelease.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "5adb0282001667e07fbeb5b408dede4401ce3d2b775a45bc2f764e61092df453",
+      "gitBlob": "b9331d718da3a95143747eb9285b12a8cfbe0b33"
+    },
+    {
+      "path": "frontend/tests/browser/localBrowserServer.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "9ee3239186d6c5a1e3f88aeffa22127e6dcbaaf649d6ff8860d41ae6f4a2ea8b",
+      "gitBlob": "0f49b9da79ae8b6e9acbdf2cf47649a512486618"
+    },
+    {
+      "path": "frontend/tests/fix05.test.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "ec3fc17f98020b9d43ac2e3fa44c27ffe72b511d1cd248bebed802982ed11378",
+      "gitBlob": "ba7ac1b0d3c0857a2bcd7a9cb296c889585f04c8"
+    },
+    {
+      "path": "frontend/tests/holdRecovery.test.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "2f0352a3cfd1358f03c730985ea433a0b0ffc746330389c59a0e25d447e8d00a",
+      "gitBlob": "6a36cee40112ef3790e2b624f27e283c45e83e95"
+    },
+    {
+      "path": "frontend/tests/product01.test.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "fe6e8eecf1d800d5c42483047f0f3ae4846b46fb48c7fc97a3f1090d4a7653d2",
+      "gitBlob": "01707894e12c9edc29f9f008df4819fc7f2fde41"
+    },
+    {
+      "path": "frontend/tests/sales.test.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "5afb100d1a3c46965f732b471c448553d0816d39121411f1a0a0b74dc0ddfdad",
+      "gitBlob": "3ce7ccdd2b5f52ee8d2ef42fd47c0f3b28d47126"
+    },
+    {
+      "path": "frontend/tests/seatMapGeometry.test.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "fe1c5b0e796a87b2a13d3f8d496076a65507cf4d07b0845c9c187400e9f2759a",
+      "gitBlob": "0a6bd19d985f4f871996bf094c8a60968ca4f279"
+    },
+    {
+      "path": "frontend/tests/seatPresentation.test.mjs",
+      "group": "tests",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "bf3949584918b1a985dbbed1400aaa5d4dab31ab50533280f34128b08671b7a5",
+      "gitBlob": "bf79191910e7384634d7cf2e57f9902f730bc619"
+    },
+    {
+      "path": "frontend/vite.config.js",
+      "group": "production",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "e6bc82b778526ae1b911635524345bd766c668ac92eb4c3ea265b67a10790c80",
+      "gitBlob": "1fefe520079220254061dc3f3b1cbacd597d7028"
+    },
+    {
+      "path": "global.json",
+      "group": "setup",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "20c93ca7812d0a9825eef71217156f95ab2f4fe5aadfeb22ebc1c24b630018d3",
+      "gitBlob": "d46d21e50b3f3284ca3589173cac1e0af1076810"
+    },
+    {
+      "path": "scripts/local-env.ps1",
+      "group": "setup",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "dde1eb813409162b7ce0db3eccf60eec603fc58c71b0b67ccfa6ca6987624394",
+      "gitBlob": "c7196a7625dcf0a54ffc43d0b29cb2824fb6bf96"
+    },
+    {
+      "path": "tests/ci/delivery-manifest.mjs",
+      "group": "ci",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "d86deb646259746f84a5fed5b94132a6eb451f9808473d4523c071c0d7bc7ed1",
+      "gitBlob": "41c466ce90f83feefedb7b597904c4e53cb29e2d"
+    },
+    {
+      "path": "tests/ci/delivery-manifest.test.mjs",
+      "group": "ci",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "4750ce5bf7dd1d6053605fdbdd9b96bb11872c20c2398bad977333e6e8c108f9",
+      "gitBlob": "2e65486412dd6734241824baed387d8d3d34837a"
+    },
+    {
+      "path": "tests/ci/package-lock.json",
+      "group": "ci",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "5f4b8284487c7a660042c425cfd36d48ac159a73c58487bee10465ecc122ca9c",
+      "gitBlob": "67c691a28c9a44188a6f9281801322f7e0d4fcec"
+    },
+    {
+      "path": "tests/ci/package.json",
+      "group": "ci",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "ee10c64fbc1ef8ec55e238fd2c48b9d81766a1b3b935a6965e61f65bb04831ac",
+      "gitBlob": "10f12213bdaeb1dd44dd1977ef5e899070c0ed66"
+    },
+    {
+      "path": "tests/ci/quality-gate.mjs",
+      "group": "ci",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "afb7f9e4849fe817ee0d47cb04928cb32e89547ca04183f002ed02ae55914774",
+      "gitBlob": "8fefc572d99f96b7c8dbc8e893f7d092364582f7"
+    },
+    {
+      "path": "tests/ci/run-backend-tests.mjs",
+      "group": "ci",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "2eea5c33da45fc8f2b1f41a245245482ebb0dbd632bf6c1d962710f5e11ca74d",
+      "gitBlob": "1ce0eba0eedd6fc51b439ded43cf628209382b61"
+    },
+    {
+      "path": "tests/ci/test-results.test.mjs",
+      "group": "ci",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "9460c4fb337434dd27e22fcd16c4f01f03a09ce3725c032cc94d7771efadba51",
+      "gitBlob": "6ae6a60ce1349df0dff4496d96872134e662285a"
+    },
+    {
+      "path": "tests/ci/verify-workflows.mjs",
+      "group": "ci",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "6c734506f333d984bd81ddb1326642977db4b9dc31e0e3824980a5db7c224ac5",
+      "gitBlob": "cbe7d100fccfbc4071e02fe0e3fc43d9364efd19"
+    },
+    {
+      "path": "tests/ci/workflows.test.mjs",
+      "group": "ci",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "68f2628f7cfda6cff1a61af0c5e9efb745a3f2993ebd5a3ccc42c2df4a3a6760",
+      "gitBlob": "895c3b664eebb854f2be12fb17b4c34ed374ec76"
+    },
+    {
+      "path": "tests/run-local-tests.ps1",
+      "group": "ci",
+      "action": "modified",
+      "mode": "100644",
+      "sha256": "cef41876add4247284cca4aee09d6edfc430eff74625bdb2b379833228e47390",
+      "gitBlob": "8ce30a5f2b96f016f7535ef75122ac467ac931b0"
+    },
+    {
+      "path": "tools/EventTicketing.LocalSetup/EventTicketing.LocalSetup.csproj",
+      "group": "setup",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "b59605377ae3445a03e8348ffe163b213aa74c386e9721f98d84884354949a6a",
+      "gitBlob": "3d9a0a6608e896e157100cfa1587d7f2f929476b"
+    },
+    {
+      "path": "tools/EventTicketing.LocalSetup/FreshLocalDatabase.cs",
+      "group": "setup",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "1080165052b16b8a762b2903669fae5963ca64e406cac457f591ede2da119839",
+      "gitBlob": "04588e90c69e31d5da1ec5453335a02c8223020d"
+    },
+    {
+      "path": "tools/EventTicketing.LocalSetup/LocalSetupCli.cs",
+      "group": "setup",
+      "action": "added",
+      "mode": "100644",
+      "sha256": "cde524168e1fd3f404ad617b0d8718314cae18188b8487ac6fa6d504476881c4",
+      "gitBlob": "87eb84bbe4cfde8ce6f45acc0414c6b69277ad03"
+    }
+  ],
+  "excluded": [
+    "docs/fix01/FIX-01-report.md",
+    "docs/fix02/FIX-02-report.md",
+    "docs/fix03/FIX-03-report.md",
+    "docs/fix04/FIX-04-report.md",
+    "docs/fix05/FIX-05-report.md",
+    "docs/fix06/FIX-06-report.md"
+  ]
+}

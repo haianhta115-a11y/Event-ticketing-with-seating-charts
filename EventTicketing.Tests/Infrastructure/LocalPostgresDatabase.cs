@@ -75,7 +75,6 @@ internal sealed class LocalPostgresDatabase : IAsyncDisposable
                 if ((string?)await identity.ExecuteScalarAsync() != target.Database || !target.Database.StartsWith("event_ticketing_test_1a1_", StringComparison.Ordinal))
                     throw new InvalidOperationException("New disposable fixture identity mismatch.");
             }
-            await context.Database.CloseConnectionAsync();
             var model = context.GetService<IDesignTimeModel>().Model;
             var operations = context.GetService<IMigrationsModelDiffer>()
                 .GetDifferences(null, model.GetRelationalModel())
@@ -85,6 +84,9 @@ internal sealed class LocalPostgresDatabase : IAsyncDisposable
             var commands = context.GetService<IMigrationsSqlGenerator>().Generate(operations, model);
             foreach (var command in commands)
                 await context.Database.ExecuteSqlRawAsync(command.CommandText);
+            // Keep the verified connection open for the complete schema batch. Opening
+            // one unpooled Windows socket per DDL command can exhaust ephemeral ports.
+            await context.Database.CloseConnectionAsync();
             return new LocalPostgresDatabase(target.ConnectionString, context);
         }
         catch
