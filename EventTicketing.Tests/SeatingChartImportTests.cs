@@ -271,7 +271,7 @@ public sealed class SeatingChartImportTests(ITestOutputHelper output) : IAsyncLi
         await failure.LockAcquired.Task.WaitAsync(TimeSpan.FromSeconds(10));
         try
         {
-            var holding = new SeatReservationService(db, TimeProvider.System).HoldSeatAsync(10, id, 123);
+            var holding = new SeatReservationService(db, new PostgresReservationClock()).HoldSeatAsync(10, id, 123);
             await failure.HoldWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.False(holding.IsCompleted);
             failure.Resume.TrySetResult();

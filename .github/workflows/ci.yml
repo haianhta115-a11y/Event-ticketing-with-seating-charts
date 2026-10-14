@@ -2,11 +2,21 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, staging]
+    # Every push, including feature branches; no deployment secrets.
   pull_request:
     branches: [main, develop, staging]
   workflow_dispatch:
+    inputs:
+      coverage_base_sha:
+        description: 'Approved earlier 40-character baseline SHA for coverage comparison'
+        type: string
+        required: true
   workflow_call:
+    inputs:
+      coverage_base_sha:
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -33,6 +43,7 @@ jobs:
           POSTGRES_HOST_AUTH_METHOD: trust
         ports: ['127.0.0.1:5432:5432']
         options: >-
+          --shm-size=512m
           --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d event_ticketing_test_ci_bootstrap"
           --health-interval 5s --health-timeout 5s --health-retries 12
       redis:
@@ -49,6 +60,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
@@ -73,7 +85,15 @@ jobs:
           "$RUNNER_TEMP/browser-runtime/node_modules/.bin/playwright" install --with-deps chrome
           printf 'FIX03_PLAYWRIGHT=%s\n' "$RUNNER_TEMP/browser-runtime/node_modules/playwright" >> "$GITHUB_ENV"
       - name: Full backend, real browsers and local latency (fail on missing or skipped tests)
-        run: node tests/ci/run-backend-tests.mjs
+        # Independently created disposable CI service; no shared endpoint or credentials.
+        # The initializer compares this non-secret cluster identifier before CREATE.
+        env:
+          LOCAL_SETUP_POSTGRES_PORT: '5432'
+        run: |
+          cluster_id=$(docker exec '${{ job.services.postgres.id }}' psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres -At -c 'SELECT system_identifier FROM pg_control_system()')
+          [[ "$cluster_id" =~ ^[1-9][0-9]{0,19}$ ]] || exit 1
+          export LOCAL_SETUP_POSTGRES_SYSTEM_IDENTIFIER="$cluster_id"
+          node tests/ci/run-backend-tests.mjs
 
   frontend:
     name: Frontend and workflow quality
@@ -83,6 +103,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24'
@@ -95,19 +116,41 @@ jobs:
         run: |
           npm run check --prefix tests/ci
           npm test --prefix tests/ci
-      - name: Frontend lint
+      - name: Frontend typecheck
         working-directory: frontend
-        run: npm run lint
+        run: npm run typecheck
       - name: Full frontend tests
         working-directory: frontend
         run: node --test tests/*.test.mjs
+      - name: Changed executable JS coverage non-regression
+        env:
+          COVERAGE_BASE_SHA: ${{ inputs.coverage_base_sha || github.event.pull_request.base.sha || github.event.before }}
+          COVERAGE_INITIAL_BASE_SHA: ${{ vars.COVERAGE_INITIAL_BASE_SHA }}
+        run: node tests/ci/run-frontend-coverage.mjs
       - name: Frontend production build
         working-directory: frontend
         run: npm run build
 
+  frontend-lint:
+    name: Frontend lint (parallel with tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Locked dependencies and lint
+        run: |
+          npm ci --prefix frontend --ignore-scripts
+          npm run lint --prefix frontend
+
   quality-gate:
     name: Required quality gate
-    needs: [backend, frontend]
+    needs: [backend, frontend, frontend-lint]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -123,6 +166,7 @@ jobs:
         env:
           BACKEND_RESULT: ${{ needs.backend.result }}
           FRONTEND_RESULT: ${{ needs.frontend.result }}
+          LINT_RESULT: ${{ needs.frontend-lint.result }}
         run: node tests/ci/quality-gate.mjs
 
 

@@ -20,6 +20,10 @@ public static class SeatReservationEndpoints
         group.AddEndpointFilter(async (context, next) =>
         {
             try { return await next(context); }
+            catch (SeatMapAccessException error)
+            {
+                return Results.Json(new { errorCode = "SEAT_MAP_NOT_PUBLIC", message = error.Status == 404 ? "Suất diễn không tồn tại." : error.Message }, statusCode: error.Status);
+            }
             catch (SeatDataUnresolvedException)
             {
                 return Results.Json(new { errorCode = "SEAT_DATA_UNRESOLVED", message = "Dữ liệu ghế cần được đối soát trước khi thực hiện thao tác." }, statusCode: 409);
@@ -52,7 +56,7 @@ public static class SeatReservationEndpoints
             var status = result.FailureReason switch
             {
                 HoldFailureReason.NotFound => 404,
-                HoldFailureReason.SalesClosed => 400,
+                HoldFailureReason.SalesClosed => 409,
                 _ => 409
             };
             var code = result.FailureReason switch
@@ -117,7 +121,7 @@ public static class SeatReservationEndpoints
                     message = result.ErrorMessage,
                     errorCode = "SALES_CLOSED",
                     serverTimeUtc = result.ServerTimeUtc
-                }, statusCode: StatusCodes.Status400BadRequest),
+                }, statusCode: StatusCodes.Status409Conflict),
 
                 HoldFailureReason.AlreadyHeld => Results.Json(new
                 {
@@ -162,6 +166,8 @@ public static class SeatReservationEndpoints
             int seatId,
             [FromQuery] int? userIdQuery,
             ISeatReservationService reservationService,
+            AppDbContext db,
+            IReservationClock clock,
             ClaimsPrincipal user,
             CancellationToken ct) =>
         {
@@ -174,7 +180,17 @@ public static class SeatReservationEndpoints
             var result = await reservationService.ReleaseSeatAsync(showtimeId, seatId, userId.Value, ct);
             if (result.IsSuccess)
             {
-                return Results.Ok(new { success = true, message = "Đã hủy giữ chỗ thành công." });
+                var session = await reservationService.GetUserHoldSessionAsync(showtimeId, userId.Value, ct);
+                IReadOnlyList<SeatDisplayDto> seats;
+                try { seats = await reservationService.GetSeatingChartStatusAsync(showtimeId, userId.Value, ct, user); }
+                catch (SeatMapAccessException) { seats = []; }
+                return Results.Ok(new
+                {
+                    success = true,
+                    message = "Đã hủy giữ chỗ thành công.",
+                    session,
+                    chart = new { serverTimeUtc = await clock.NowAsync(db, ct), hasSeatMap = seats.Count > 0, seats }
+                });
             }
 
             if (result.FailureReason == ReleaseFailureReason.Forbidden)
@@ -197,19 +213,19 @@ public static class SeatReservationEndpoints
             [FromQuery] int? currentUserId,
             ISeatReservationService reservationService,
             AppDbContext db,
-            TimeProvider timeProvider,
+            IReservationClock clock,
             ClaimsPrincipal user,
             CancellationToken ct) =>
         {
             var resolvedUserId = AccessPolicies.UserId(user);
-            var seats = await reservationService.GetSeatingChartStatusAsync(showtimeId, resolvedUserId, ct);
+            var seats = await reservationService.GetSeatingChartStatusAsync(showtimeId, resolvedUserId, ct, user);
             // Preserve schema-not-ready 503 precedence on an incompatible legacy schema;
             // do not disguise a missing seat column as a missing showtime/empty map.
             if (!await db.Showtimes.AnyAsync(s => s.Id == showtimeId, ct))
                 return Results.NotFound(new { message = "Suất diễn không tồn tại." });
             return Results.Ok(new
             {
-                serverTimeUtc = timeProvider.GetUtcNow().UtcDateTime,
+                serverTimeUtc = await clock.NowAsync(db, ct),
                 hasSeatMap = seats.Count > 0,
                 seats
             });

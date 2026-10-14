@@ -1,0 +1,70 @@
+name: Approved staging blue-green deployment
+on:
+  push:
+    branches: [develop, staging]
+  workflow_dispatch:
+    inputs:
+      coverage_base_sha:
+        description: 'Approved earlier commit SHA for coverage comparison'
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: staging-blue-green
+  cancel-in-progress: false
+jobs:
+  quality:
+    uses: ./.github/workflows/ci.yml
+    with:
+      coverage_base_sha: ${{ inputs.coverage_base_sha || github.event.before }}
+  images:
+    needs: [quality]
+    if: ${{ vars.STAGING_DEPLOYMENT_APPROVED == 'true' && github.ref_name == vars.STAGING_SOURCE_BRANCH }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api: ${{ steps.images.outputs.api }}
+      web: ${{ steps.images.outputs.web }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build immutable images after same-commit quality
+        id: images
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          base="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker buildx build --push -t "$base-api:$GITHUB_SHA" --metadata-file "$RUNNER_TEMP/api.json" .
+          docker buildx build --push -t "$base-web:$GITHUB_SHA" --metadata-file "$RUNNER_TEMP/web.json" frontend
+          printf 'api=%s-api@%s\n' "$base" "$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/api.json")" >> "$GITHUB_OUTPUT"
+          printf 'web=%s-web@%s\n' "$base" "$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/web.json")" >> "$GITHUB_OUTPUT"
+  deploy:
+    needs: [quality, images]
+    if: ${{ vars.STAGING_DEPLOYMENT_APPROVED == 'true' && github.ref_name == vars.STAGING_SOURCE_BRANCH }}
+    # Operator must provision/protect this environment and runner BEFORE enabling approval.
+    environment: staging
+    runs-on: [self-hosted, linux, staging]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Approved candidate health, activation and rollback
+        env:
+          STAGING_DEPLOYMENT_APPROVED: ${{ vars.STAGING_DEPLOYMENT_APPROVED }}
+          STAGING_PROJECT: ${{ vars.STAGING_PROJECT }}
+          STAGING_ROUTE_FILE: ${{ vars.STAGING_ROUTE_FILE }}
+          STAGING_ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
+          STAGING_HOME_URL: ${{ vars.STAGING_HOME_URL }}
+          STAGING_API_IMAGE: ${{ needs.images.outputs.api }}
+          STAGING_WEB_IMAGE: ${{ needs.images.outputs.web }}
+        run: node scripts/staging-blue-green.mjs --execute

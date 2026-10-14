@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
 import { formatVietnamTime } from '../events/management';
+import { showtimeMetadata } from '../events/showtimeMetadata';
 
 export default function ShowtimeDetail() {
   const { id } = useParams();
@@ -9,12 +10,15 @@ export default function ShowtimeDetail() {
   const [showtime, setShowtime] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  useEffect(() => showtimeMetadata(document, loading || error ? null : showtime, window.location.href), [showtime, loading, error, id]);
 
   useEffect(() => {
+    const abort = new AbortController();
     const fetchShowtime = async () => {
       try {
         setLoading(true);
-        const response = await axiosClient.get(`/showtimes/${id}`);
+        const response = await axiosClient.get(`/showtimes/${id}`, { signal: abort.signal });
+        if (abort.signal.aborted) return;
         const data = response.data;
         
         if (!data || data.isOnSale === false) {
@@ -24,13 +28,14 @@ export default function ShowtimeDetail() {
           setError(false);
         }
       } catch {
-        setError(true);
+        if (!abort.signal.aborted) setError(true);
       } finally {
-        setLoading(false);
+        if (!abort.signal.aborted) setLoading(false);
       }
     };
     
     fetchShowtime();
+    return () => abort.abort();
   }, [id]);
 
   const handleSelectSeats = () => {

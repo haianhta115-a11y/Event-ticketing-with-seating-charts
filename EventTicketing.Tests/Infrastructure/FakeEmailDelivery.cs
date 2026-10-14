@@ -16,8 +16,13 @@ internal sealed class FakeEmailDelivery : IEmailDelivery
     }
 }
 
-internal sealed class TestClock : TimeProvider
+internal sealed class TestClock : TimeProvider, EventTicketing.Api.Services.IReservationClock
 {
     public DateTimeOffset Now { get; set; } = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
     public override DateTimeOffset GetUtcNow() => Now;
+    public Task<DateTime> NowAsync(EventTicketing.Api.Data.AppDbContext db, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult(Now.UtcDateTime);
+    }
 }

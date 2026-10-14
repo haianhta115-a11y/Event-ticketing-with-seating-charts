@@ -6,10 +6,11 @@ import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
 
 export const phases = [
-  ['api', 'FullyQualifiedName!~RealBrowser&Category!=Performance', 327],
+  ['api', 'FullyQualifiedName!~RealBrowser&FullyQualifiedName!~Burst200Requests100Seats&Category!=Performance', 367],
+  ['concurrency', 'FullyQualifiedName~Burst200Requests100Seats', 1, 10],
   ['browser-s13', 'FullyQualifiedName~RealBrowser_SelectFive', 1],
   ['browser-s08-s11', 'FullyQualifiedName~RealBrowser_PublicPagination', 1],
-  ['latency', 'FullyQualifiedName~LocalLatency_Feed200Showtimes', 1],
+  ['latency', 'Category=Performance', 2],
 ];
 export function verifyCounters(xml, minimum) {
   const tag = xml.match(/<Counters\b([^>]+)\/?\s*>/);
@@ -26,12 +27,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   mkdirSync(results, { recursive: true });
   const config = process.env.CI_BUILD_CONFIGURATION || 'Release';
   if (!['Debug', 'Release'].includes(config)) throw new Error('Unsupported test build configuration.');
-  for (const [name, filter, minimum] of phases) {
-    const file = `ci-${name}-${Date.now()}.trx`;
+  for (const [name, filter, minimum, repeats = 1] of phases) {
+   for (let iteration = 1; iteration <= repeats; iteration++) {
+    const file = `ci-${name}-${iteration}-${Date.now()}.trx`;
     const run = spawnSync('dotnet', ['test', 'EventTicketing.Tests/EventTicketing.Tests.csproj', '-c', config, '--no-build', '--no-restore',
-      '--filter', filter, '--logger', `trx;LogFileName=${file}`, '--results-directory', results], { cwd: repo, stdio: 'inherit', timeout: 600000 });
+      '--filter', filter, '--logger', `trx;LogFileName=${file}`, '--results-directory', results,
+      ...(name === 'api' ? ['--collect:XPlat Code Coverage'] : [])], { cwd: repo, stdio: 'inherit', timeout: 600000 });
     if (run.status !== 0 || run.error) { process.exitCode = 1; break; }
     try { console.log(`${name}: ${verifyCounters(readFileSync(path.join(results, file), 'utf8'), minimum)} required tests passed.`); }
     catch (error) { console.error(error.message); process.exitCode = 1; break; }
+   }
+   if (process.exitCode) break;
   }
 }

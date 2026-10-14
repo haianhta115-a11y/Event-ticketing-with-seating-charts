@@ -128,7 +128,7 @@ public sealed class SalesWorkflowTests : IAsyncLifetime
         Assert.False(await Listed());
         Assert.False((await client.GetFromJsonAsync<JsonElement>($"/api/showtimes/{showId}")).GetProperty("isOnSale").GetBoolean());
         factory.Authenticate(client, 501, "Buyer");
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync($"/api/showtimes/{showId}/seats/{seatId}/hold", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync($"/api/showtimes/{showId}/seats/{seatId}/hold", new { })).StatusCode);
         var retained = await client.GetFromJsonAsync<JsonElement>(holdUrl);
         Assert.Equal(original.GetRawText(), retained.GetRawText());
         factory.Authenticate(client, 201, "Organizer");
@@ -137,7 +137,7 @@ public sealed class SalesWorkflowTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, (await client.PutAsync($"/api/events/{eventId}/unpublish", null)).StatusCode);
         Assert.False(await Listed());
         factory.Authenticate(client, 501, "Buyer");
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync($"/api/showtimes/{showId}/seats/{seatId}/hold", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync($"/api/showtimes/{showId}/seats/{seatId}/hold", new { })).StatusCode);
         Assert.Equal(original.GetRawText(), (await client.GetFromJsonAsync<JsonElement>(holdUrl)).GetRawText());
         Assert.Equal(HttpStatusCode.OK, (await client.DeleteAsync($"/api/showtimes/{showId}/seats/{seatId}/hold")).StatusCode);
         using var db = database.CreateContext();
@@ -153,8 +153,8 @@ public sealed class SalesWorkflowTests : IAsyncLifetime
         using var buyer = factory.CreateClient(); factory.Authenticate(buyer, 501, "Buyer");
         var results = await Task.WhenAll(Sales("Closed"), buyer.PostAsJsonAsync($"/api/showtimes/{showId}/seats/{seatId}/hold", new { }));
         Assert.Equal(HttpStatusCode.OK, results[0].StatusCode);
-        Assert.Contains(results[1].StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.BadRequest });
-        Assert.Equal(HttpStatusCode.BadRequest, (await buyer.PostAsJsonAsync($"/api/showtimes/{showId}/seats/{seatId}/hold", new { })).StatusCode);
+        Assert.Contains(results[1].StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Conflict });
+        Assert.Equal(HttpStatusCode.Conflict, (await buyer.PostAsJsonAsync($"/api/showtimes/{showId}/seats/{seatId}/hold", new { })).StatusCode);
         using var db = database.CreateContext();
         Assert.Equal(ShowtimeStatus.Closed, (await db.Showtimes.SingleAsync()).Status);
     }

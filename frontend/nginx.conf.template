@@ -1,0 +1,7 @@
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    location /api/ { proxy_pass http://${API_UPSTREAM}/api/; }
+    location = /health/ready { proxy_pass http://${API_UPSTREAM}/health/ready; }
+    location / { try_files $uri $uri/ /index.html; }
+}

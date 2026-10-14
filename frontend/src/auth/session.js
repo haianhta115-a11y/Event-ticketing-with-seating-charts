@@ -5,6 +5,7 @@ export function getSession(storage = localStorage, now = Date.now()) {
   const token = storage.getItem('token');
   if (!token) return null;
   try {
+    /** @type {import('jwt-decode').JwtPayload & {role?: string|string[]}} */
     const claims = jwtDecode(token);
     if (!Number.isFinite(claims.exp) || claims.exp * 1000 <= now) return null;
     const value = claims['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ?? claims.role ?? [];

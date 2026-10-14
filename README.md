@@ -78,6 +78,35 @@ Startup từ chối giá trị ngoài 1–1440 phút để tránh cấu hình th
 Đổi cấu hình không gia hạn hoặc rút ngắn phiên đang tồn tại: các ghế chọn thêm,
 reload và nhả bớt ghế vẫn dùng deadline đã lưu trên máy chủ. UI đếm theo server time.
 
+FINAL-FIX: mặc định bấm ghế trống sẽ giữ ngay; bấm lại ghế mình giữ sẽ nhả.
+Muốn giữ nhiều ghế atomically, bật “Chọn nhiều ghế — chỉ giữ khi xác nhận cả nhóm”.
+Ghế chờ trong chế độ này chưa phải hold; xác nhận mới gửi một batch all-or-nothing.
+Release thành công trả snapshot chart/session trong cùng DELETE, không cần GET bổ
+sung; lỗi/mất response vẫn refresh từ máy chủ, không tự đoán quyền sở hữu.
+Thời gian reservation/expiry dùng PostgreSQL clock_timestamp; browser dùng monotonic
+clock + server timestamp, không dùng localStorage deadline hoặc thời gian máy khách.
+
+### Sơ đồ mẫu và phép đo local (T-21)
+
+`samples/seating-chart-2000.json` là fixture tổng hợp, không phải dữ liệu lịch sử.
+`node scripts/generate-seat-chart.mjs 100 samples/new-demo-100.json` sinh file mới
+và từ chối ghi đè. Chỉ preview/import vào showtime test riêng được cho phép.
+
+Phép đo Chrome local FINAL-FIX (2026-10-14): 1 warmup + 20 lần điều hướng từ request
+trang đến đủ 2.000 SVG seat nodes và 2 animation frames; p95 **775,67 ms**, dưới 2s.
+Đây là Vite dev, warm assets, desktop headless; không phải SLA production hoặc điện
+thoại vật lý. Các lần chạy và phép đo SQL được lưu trong báo cáo FINAL-FIX.
+Sample đã qua chính API multipart preview (không ghi) và confirmed import trong
+fixture DB mới. Service query 2.000 ghế, gồm access check và DB clock, có 3 warmup +
+30 samples; p95 **40,17 ms**, dưới 200ms trên PostgreSQL local. Không suy ra SLA tải cao.
+
+Frontend có `npm run typecheck --prefix frontend` (checkJs toàn src, JSDoc, noEmit).
+CI tách lint song song tests; gate fail-closed nối backend/frontend/lint. Coverage JS
+so với baseline SHA rõ ràng, từ chối missing artifact/regression; JSX và baseline C#
+vẫn cần evidence riêng. Manual CI yêu cầu SHA tổ tiên rõ ràng, không fallback commit
+với chính nó. Xem [staging approval](docs/finalfix/STAGING-APPROVAL.md): deploy bị khóa
+mặc định, chưa thực hiện; không migrations/seeds/shared database trong FINAL-FIX.
+
 Delivery 02 vẫn là code-only: cấu hình này không cho phép tự chạy historical EF
 migrations, seed, DB-03B hoặc triển khai lên database team. Rehearsal/test chỉ dùng
 database local cô lập được duyệt và Redis DB 15; không dùng source/protected DB.
@@ -103,9 +132,12 @@ Không chạy bộ test nghiệp vụ cũ trong Batch 1A: còn model Performance
 
 ### Deployment và migrations
 
-Giữ hỗ trợ biến `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`,
-`REDIS_CONNECTION` trong cấu hình Staging. Full connection string cũng có thể được cấp
-qua environment. Staging Compose cần `JWT_KEY` từ secret store/environment.
+JSON Development/Testing/Staging yêu cầu `POSTGRES_CONNECTION_STRING` hoặc override
+`ConnectionStrings__DefaultConnection` qua environment, không còn credential literal.
+Staging Compose vẫn có thể ghép `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+thành override connection string; các biến này không tự được ghép khi chạy DLL riêng.
+Redis cấp qua `Redis__ConnectionString`/`REDIS_CONNECTION`; Staging Compose cần `JWT_KEY`
+từ secret store/environment.
 Không có fallback localhost/credential cho Production thiếu cấu hình.
 
 Migration phải là thao tác được duyệt riêng, kiểm tra destination trước khi thực hiện.

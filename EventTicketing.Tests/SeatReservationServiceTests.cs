@@ -420,11 +420,16 @@ public sealed class SeatReservationServiceTests
         return seat;
     }
 
-    private sealed class TestTimeProvider(DateTimeOffset initialUtcNow) : TimeProvider
+    private sealed class TestTimeProvider(DateTimeOffset initialUtcNow) : TimeProvider, IReservationClock
     {
         private DateTimeOffset currentUtc = initialUtcNow;
 
         public override DateTimeOffset GetUtcNow() => currentUtc;
+        public Task<DateTime> NowAsync(AppDbContext db, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult(currentUtc.UtcDateTime);
+        }
 
         public void Advance(TimeSpan duration)
         {

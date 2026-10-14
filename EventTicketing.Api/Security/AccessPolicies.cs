@@ -28,8 +28,7 @@ public sealed class EventOwnerHandler(ILogger<EventOwnerHandler> logger)
              (context.User.IsInRole("Organizer") && resource.OwnerUserId == id)))
             context.Succeed(requirement);
         else
-            logger.LogWarning("Authorization denied for user {UserId} on event {EventId}",
-                AccessPolicies.UserId(context.User), resource.Id);
+            logger.LogWarning("Authorization denied for event {EventId}", resource.Id);
         return Task.CompletedTask;
     }
 }

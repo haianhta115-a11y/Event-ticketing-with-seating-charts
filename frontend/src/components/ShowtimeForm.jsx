@@ -9,7 +9,7 @@ export default function ShowtimeForm({ eventId, existingShowtimes = [], onShowti
   const [warning, setWarning] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const gate = useRef(submissionGate());
-  const [fieldErrors, setFieldErrors] = useState({});
+  const [fieldErrors, setFieldErrors] = useState(/** @type {Record<string,string>} */ ({}));
   const [savedWarning, setSavedWarning] = useState('');
   const [savedId, setSavedId] = useState(null);
 
