@@ -122,5 +122,13 @@ public class ShowtimesController(AppDbContext context, SeatingChartPreparation p
         {
             return StatusCode(ex.Status, new { errorCode = ex.Code, message = ex.Message });
         }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.NumericValueOutOfRange or "22003" })
+        {
+            return BadRequest(new { errorCode = "INVALID_PRICE", message = "Giá vé vượt quá giới hạn cho phép." });
+        }
+        catch (PostgresException ex) when (ex.SqlState is PostgresErrorCodes.NumericValueOutOfRange or "22003")
+        {
+            return BadRequest(new { errorCode = "INVALID_PRICE", message = "Giá vé vượt quá giới hạn cho phép." });
+        }
     }
 }

@@ -69,7 +69,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.ShowtimeId).HasColumnName("showtime_id");
             entity.Property(e => e.Name).HasColumnName("name").HasMaxLength(100);
             entity.Property(e => e.NormalizedName).HasColumnName("normalized_name").HasMaxLength(100);
-            entity.Property(e => e.Price).HasColumnName("price").HasPrecision(18, 2).HasDefaultValue(0m);
+            entity.Property(e => e.Price).HasColumnName("price").HasPrecision(18, 2);
             entity.HasAlternateKey(e => new { e.ShowtimeId, e.Id });
             entity.HasIndex(e => new { e.ShowtimeId, e.NormalizedName }).IsUnique();
             // Active entities require a real association. Unresolved rows use LegacySeatData's

@@ -51,6 +51,8 @@ public sealed class SeatPricingService(
         return showtime;
     }
 
+    public const decimal MaxPrice = 9_999_999_999_999_999m;
+
     private static void ValidatePricingItems(UpdateSeatPricingRequest? request)
     {
         if (request?.Categories == null || request.Categories.Count == 0)
@@ -58,11 +60,23 @@ public sealed class SeatPricingService(
 
         foreach (var item in request.Categories)
         {
+            if (item == null)
+                throw new SeatPricingException(400, "INVALID_PRICING_REQUEST", "Dữ liệu giá vé không hợp lệ.");
+
             if (item.CategoryId <= 0)
                 throw new SeatPricingException(400, "INVALID_CATEGORY_ID", "Mã hạng ghế không hợp lệ.");
 
-            if (item.Price < 0)
+            if (!item.Price.HasValue)
+                throw new SeatPricingException(400, "INVALID_PRICE", "Giá vé không được để trống.");
+
+            if (item.Price.Value < 0)
                 throw new SeatPricingException(400, "INVALID_PRICE", "Giá vé phải lớn hơn hoặc bằng 0.");
+
+            if (item.Price.Value % 1m != 0m)
+                throw new SeatPricingException(400, "INVALID_PRICE", "Giá vé phải là số nguyên (không có phần thập phân).");
+
+            if (item.Price.Value > MaxPrice)
+                throw new SeatPricingException(400, "INVALID_PRICE", "Giá vé vượt quá giới hạn cho phép.");
         }
     }
 
