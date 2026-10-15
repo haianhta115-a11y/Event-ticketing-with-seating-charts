@@ -1,8 +1,8 @@
-import { openEvents } from '../events/publicEvents';
-import axiosClient from './axiosClient';
-import { managementApi } from '../events/management';
-import { importChart, previewChart } from '../events/seatImport';
-import { salesApi } from '../events/sales';
+import { openEvents } from '../events/publicEvents.js';
+import axiosClient from './axiosClient.js';
+import { managementApi } from '../events/management.js';
+import { importChart, previewChart } from '../events/seatImport.js';
+import { salesApi } from '../events/sales.js';
 export const updateEvent = (...args) => managementApi(axiosClient).updateEvent(...args);
 
 
@@ -53,3 +53,7 @@ export const uploadSeatingChart = (showtimeId, file) => importChart(axiosClient,
 export const previewSeatingChart = (showtimeId, file) => previewChart(axiosClient, showtimeId, file);
 
 export const getOpenEvents = cursor => openEvents(axiosClient, cursor);
+
+export const getEventSeatPricing = (...args) => managementApi(axiosClient).getEventSeatPricing(...args);
+export const updateEventSeatPricing = (...args) => managementApi(axiosClient).updateEventSeatPricing(...args);
+

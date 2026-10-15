@@ -8,6 +8,8 @@ using EventTicketing.Api.Entities;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using EventTicketing.Api.Models.Pricing;
+using EventTicketing.Api.Services;
 using Npgsql;
 
 namespace EventTicketing.Api.Controllers
@@ -221,6 +223,45 @@ namespace EventTicketing.Api.Controllers
                 evt.CreatedAt,
                 evt.UpdatedAt
             });
+        }
+
+        [HttpGet("{id:int}/pricing")]
+        [HttpGet("{id:int}/seat-categories")]
+        [HttpGet("{id:int}/seat-categories/pricing")]
+        [Authorize(Policy = AccessPolicies.EventManagement)]
+        public async Task<IActionResult> GetSeatPricing(int id, [FromServices] ISeatPricingService pricingService, CancellationToken ct)
+        {
+            try
+            {
+                var result = await pricingService.GetEventSeatPricingAsync(id, User, ct);
+                return Ok(result);
+            }
+            catch (SeatPricingException ex)
+            {
+                return StatusCode(ex.Status, new { errorCode = ex.Code, message = ex.Message });
+            }
+        }
+
+        [HttpPut("{id:int}/pricing")]
+        [HttpPut("{id:int}/seat-categories")]
+        [HttpPut("{id:int}/seat-categories/pricing")]
+        [Authorize(Policy = AccessPolicies.EventManagement)]
+        public async Task<IActionResult> UpdateSeatPricing(int id, [FromBody] UpdateSeatPricingRequest request, [FromServices] ISeatPricingService pricingService, CancellationToken ct)
+        {
+            try
+            {
+                var result = await pricingService.UpdateEventSeatPricingAsync(id, request, User, ct);
+                return Ok(new
+                {
+                    success = true,
+                    message = "Cập nhật giá vé theo hạng ghế thành công!",
+                    categories = result
+                });
+            }
+            catch (SeatPricingException ex)
+            {
+                return StatusCode(ex.Status, new { errorCode = ex.Code, message = ex.Message });
+            }
         }
     }
 }
