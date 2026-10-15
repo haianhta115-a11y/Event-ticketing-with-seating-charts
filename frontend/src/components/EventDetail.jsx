@@ -666,7 +666,7 @@ function EventDetailScreen({ id }) {
         )}
 
         {/* Thiết lập giá vé theo hạng ghế (Task S-15) */}
-        <SeatPricingManager eventId={id} />
+        <SeatPricingManager eventId={id} onPricingUpdated={() => {}} />
 
         {/* Form thêm suất diễn */}
         <ShowtimeForm

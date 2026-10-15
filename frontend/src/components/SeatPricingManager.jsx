@@ -11,7 +11,13 @@ function getCategoryColor(name) {
   return 'var(--accent, #aa3bff)';
 }
 
-export default function SeatPricingManager({ eventId, onPricingUpdated }) {
+/**
+ * @param {{
+ *   eventId: number | string,
+ *   onPricingUpdated?: () => void
+ * }} props
+ */
+export default function SeatPricingManager({ eventId, onPricingUpdated = () => {} }) {
   const [categories, setCategories] = useState([]);
   const [prices, setPrices] = useState({});
   const [loading, setLoading] = useState(true);
