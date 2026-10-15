@@ -37,7 +37,7 @@ function SeatItem({ seat, pixelX, pixelY, size, categoryColor, isSelected, isPen
       onClick={event => { if (event.detail === 0) select(); }}
       onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } }}
     >
-      <title>{`${visual.label} — ${seat.category || 'Chưa có hạng ghế'}`}</title>
+      <title>{`${visual.label} — ${seat.category || 'Chưa có hạng ghế'} — ${visual.priceDisplay !== null ? visual.priceDisplay : 'Chưa có giá'}`}</title>
       <rect
         data-seat-id={seat.id}
         x={pixelX}
@@ -219,7 +219,14 @@ function SeatMapScreen({ id }) {
 
     if (!geometry) return null;
     const mappedSeats = seats.map(s => ({ ...s, ...geometry.positions.get(s.id) }));
-    const categories = categoryPalette(seats.map(s => s.category || 'Chưa có hạng ghế'));
+    const categories = categoryPalette(seats.map(s => s.category || 'Chưa có hạng ghế')).map(c => {
+      const match = seats.find(s => (s.category || 'Chưa có hạng ghế') === c.name && s.price !== undefined && s.price !== null);
+      const anyMatch = seats.find(s => (s.category || 'Chưa có hạng ghế') === c.name);
+      return {
+        ...c,
+        price: match ? match.price : (anyMatch?.price ?? null)
+      };
+    });
 
     return {
       ...geometry,
@@ -908,8 +915,15 @@ function SeatMapScreen({ id }) {
           style={{ padding: '14px 16px', border: '1px solid var(--border, #94a3b8)', borderRadius: 8, marginBottom: 16 }}>
           <div aria-label="Chú giải hạng ghế" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <strong>Hạng ghế:</strong>
-            {layout.categories.map(c => <span key={c.name} data-category-color={c.name}
-              style={{ background: c.color, color: '#111827', padding: '5px 10px', borderRadius: 4, border: '1px solid #64748b' }}>{c.name}</span>)}
+            {layout.categories.map(c => {
+              const priceText = existingPrice(c.price);
+              return (
+                <span key={c.name} data-category-color={c.name}
+                  style={{ background: c.color, color: '#111827', padding: '5px 10px', borderRadius: 4, border: '1px solid #64748b' }}>
+                  {c.name}: {priceText !== null ? priceText : 'Chưa có giá'}
+                </span>
+              );
+            })}
             <span style={{ marginLeft: 'auto' }}>Tổng số ghế: <strong>{layout.counts.total}</strong></span>
           </div>
           <div className="seat-map-legend-items" aria-label="Chú giải trạng thái"
@@ -1235,12 +1249,12 @@ onClick={() => { dismissNotice(); setSelectedSeat(null); }}
                 {selectedSeat.category || 'Chưa có thông tin'}
               </div>
             </div>
-            {existingPrice(selectedSeat.price) !== null && <div>
+            <div>
               <div style={{ fontSize: '12px', color: 'var(--text, #9ca3af)', marginBottom: '4px' }}>Giá vé</div>
-              <div style={{ fontSize: '15px', fontWeight: '600', color: '#10b981' }}>
-                {existingPrice(selectedSeat.price)}
+              <div style={{ fontSize: '15px', fontWeight: '600', color: existingPrice(selectedSeat.price) !== null ? '#10b981' : 'var(--text, #9ca3af)' }}>
+                {existingPrice(selectedSeat.price) !== null ? existingPrice(selectedSeat.price) : 'Chưa có giá'}
               </div>
-            </div>}
+            </div>
             <div>
               <div style={{ fontSize: '12px', color: 'var(--text, #9ca3af)', marginBottom: '4px' }}>Trạng thái</div>
               <div>
@@ -1318,7 +1332,7 @@ onClick={() => { dismissNotice(); setSelectedSeat(null); }}
             </div>
             <div className="text-gray-300 mb-6">
               <p>Ghế đã chọn: Khu {selectedSeat?.section} - Hàng {selectedSeat?.row} - Số {selectedSeat?.number}</p>
-              <p>Giá: {selectedSeat?.price ? `${selectedSeat.price.toLocaleString('vi-VN')} đ` : 'N/A'}</p>
+              <p>Giá: {existingPrice(selectedSeat?.price) !== null ? existingPrice(selectedSeat.price) : 'Chưa có giá'}</p>
               <p className="mt-4 italic text-sm text-gray-500">Tính năng thanh toán đang được phát triển...</p>
               {selectedSeat?.heldUntilUtc && (() => {
                   const remaining = remainingSeconds;

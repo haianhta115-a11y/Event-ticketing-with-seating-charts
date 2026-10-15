@@ -124,7 +124,7 @@ public sealed class SeatReservationService(AppDbContext db, IReservationClock cl
                      && s.HeldUntil > now)
             .OrderBy(s => s.Row)
             .ThenBy(s => s.Number)
-            .Select(s => new HeldSeatDto(s.Id, s.Row, s.Number, s.SeatCategoryId, s.HeldUntil!.Value))
+            .Select(s => new HeldSeatDto(s.Id, s.Row, s.Number, s.SeatCategoryId, s.HeldUntil!.Value, s.SeatCategory.Price))
             .ToListAsync(cancellationToken);
 
         var remainingSeconds = Math.Max(0, (int)Math.Round((targetHeldUntil - now).TotalSeconds));
@@ -205,6 +205,7 @@ public sealed class SeatReservationService(AppDbContext db, IReservationClock cl
                 s.ShowtimeId,
                 s.SeatCategoryId,
                 Category = s.SeatCategory.Name,
+                Price = s.SeatCategory.Price,
                 s.Row,
                 s.Number,
                 s.X,
@@ -257,7 +258,8 @@ public sealed class SeatReservationService(AppDbContext db, IReservationClock cl
                 displayStatus,
                 s.Status == SeatStatus.Held ? s.HeldUntil : null,
                 canSelect,
-                s.Category);
+                s.Category,
+                s.Price);
         }).ToList();
     }
 
@@ -276,7 +278,7 @@ public sealed class SeatReservationService(AppDbContext db, IReservationClock cl
                      && s.HeldUntil > now)
             .OrderBy(s => s.Row)
             .ThenBy(s => s.Number)
-            .Select(s => new HeldSeatDto(s.Id, s.Row, s.Number, s.SeatCategoryId, s.HeldUntil!.Value))
+            .Select(s => new HeldSeatDto(s.Id, s.Row, s.Number, s.SeatCategoryId, s.HeldUntil!.Value, s.SeatCategory.Price))
             .ToListAsync(cancellationToken);
 
         if (myHeldSeats.Count == 0)

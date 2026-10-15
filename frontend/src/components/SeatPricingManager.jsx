@@ -1,9 +1,14 @@
-import { useState, useEffect } from 'react';
-import { getEventSeatPricing, updateEventSeatPricing } from '../api/eventsApi';
-import { apiMessage } from '../events/management';
+import { useState, useEffect, useCallback } from 'react';
+import * as eventsApi from '../api/eventsApi';
+import { apiMessage, formatVietnamTime } from '../events/management';
+
+const getEventSeatPricing = (...args) => (eventsApi.getEventSeatPricing ? eventsApi.getEventSeatPricing(...args) : Promise.resolve([]));
+const updateEventSeatPricing = (...args) => (eventsApi.updateEventSeatPricing ? eventsApi.updateEventSeatPricing(...args) : Promise.resolve({}));
+const getShowtimeSeatPricing = (...args) => (eventsApi.getShowtimeSeatPricing ? eventsApi.getShowtimeSeatPricing(...args) : getEventSeatPricing(...args));
+const updateShowtimeSeatPricing = (...args) => (eventsApi.updateShowtimeSeatPricing ? eventsApi.updateShowtimeSeatPricing(...args) : updateEventSeatPricing(...args));
 
 function getCategoryColor(name) {
-  const lower = (name || '').toLowerCase();
+  const lower = String(name || '').toLowerCase();
   if (lower.includes('vip')) return '#f59e0b';
   if (lower.includes('standard') || lower.includes('thường') || lower.includes('tiêu chuẩn')) return '#3b82f6';
   if (lower.includes('economy') || lower.includes('tiết kiệm')) return '#10b981';
@@ -13,11 +18,19 @@ function getCategoryColor(name) {
 
 /**
  * @param {{
- *   eventId: number | string,
+ *   eventId?: number | string,
+ *   showtimeId?: number | string,
+ *   showtimes?: Array<{ id: number, startTime: string, endTime?: string, status: string, hasSeatMap: boolean }>,
  *   onPricingUpdated?: () => void
  * }} props
  */
-export default function SeatPricingManager({ eventId, onPricingUpdated = () => {} }) {
+export default function SeatPricingManager({
+  eventId,
+  showtimeId: propShowtimeId,
+  showtimes = [],
+  onPricingUpdated = () => {},
+}) {
+  const [selectedShowtimeId, setSelectedShowtimeId] = useState(propShowtimeId ? String(propShowtimeId) : '');
   const [categories, setCategories] = useState([]);
   const [prices, setPrices] = useState({});
   const [loading, setLoading] = useState(true);
@@ -25,17 +38,34 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  const fetchPricing = () => {
-    if (!eventId) return;
+  useEffect(() => {
+    if (propShowtimeId) {
+      setSelectedShowtimeId(String(propShowtimeId));
+    }
+  }, [propShowtimeId]);
+
+  const fetchPricing = useCallback(() => {
+    const targetShowtimeId = propShowtimeId || (selectedShowtimeId ? Number(selectedShowtimeId) : null);
+    if (!targetShowtimeId && !eventId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
-    getEventSeatPricing(eventId)
+
+    const promise = targetShowtimeId
+      ? getShowtimeSeatPricing(targetShowtimeId)
+      : getEventSeatPricing(eventId);
+
+    promise
       .then((data) => {
         const items = Array.isArray(data) ? data : [];
         setCategories(items);
         const initialPrices = {};
         for (const item of items) {
-          initialPrices[item.id] = item.price ?? 0;
+          if (item && item.id != null) {
+            initialPrices[item.id] = (item.price !== null && item.price !== undefined) ? String(item.price) : '';
+          }
         }
         setPrices(initialPrices);
       })
@@ -45,20 +75,33 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
       .finally(() => {
         setLoading(false);
       });
-  };
+  }, [eventId, propShowtimeId, selectedShowtimeId]);
 
   useEffect(() => {
     let ignore = false;
-    if (!eventId) return;
+    const targetShowtimeId = propShowtimeId || (selectedShowtimeId ? Number(selectedShowtimeId) : null);
+    if (!targetShowtimeId && !eventId) {
+      setLoading(false);
+      return;
+    }
 
-    getEventSeatPricing(eventId)
+    setLoading(true);
+    setError(null);
+
+    const promise = targetShowtimeId
+      ? getShowtimeSeatPricing(targetShowtimeId)
+      : getEventSeatPricing(eventId);
+
+    promise
       .then((data) => {
         if (ignore) return;
         const items = Array.isArray(data) ? data : [];
         setCategories(items);
         const initialPrices = {};
         for (const item of items) {
-          initialPrices[item.id] = item.price ?? 0;
+          if (item && item.id != null) {
+            initialPrices[item.id] = (item.price !== null && item.price !== undefined) ? String(item.price) : '';
+          }
         }
         setPrices(initialPrices);
       })
@@ -74,7 +117,7 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
     return () => {
       ignore = true;
     };
-  }, [eventId]);
+  }, [eventId, propShowtimeId, selectedShowtimeId]);
 
   const handlePriceChange = (categoryId, value) => {
     setPrices((prev) => ({
@@ -90,12 +133,30 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
     setError(null);
     setSuccess(null);
 
-    // Client-side validation
-    for (const cat of categories) {
+    const validCategories = (Array.isArray(categories) ? categories : []).filter(Boolean);
+    if (validCategories.length === 0) {
+      setError('Không có hạng ghế nào để cập nhật.');
+      return;
+    }
+
+    // Client-side validation aligned with Phase 1
+    for (const cat of validCategories) {
       const val = prices[cat.id];
+      if (val === '' || val === null || val === undefined) {
+        setError('Giá vé không được để trống. Vui lòng nhập giá vé cho tất cả các hạng ghế.');
+        return;
+      }
       const num = Number(val);
-      if (val === '' || val === null || val === undefined || isNaN(num) || num < 0) {
+      if (isNaN(num) || num < 0) {
         setError('Giá vé phải lớn hơn hoặc bằng 0.');
+        return;
+      }
+      if (!Number.isInteger(num)) {
+        setError('Giá vé phải là số nguyên (không có phần thập phân).');
+        return;
+      }
+      if (num > 9999999999999999) {
+        setError('Giá vé vượt quá giới hạn cho phép.');
         return;
       }
     }
@@ -103,26 +164,31 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
     setSaving(true);
     try {
       const payload = {
-        categories: categories.map((cat) => ({
+        categories: validCategories.map((cat) => ({
           categoryId: cat.id,
           price: Number(prices[cat.id]),
         })),
       };
 
-      const result = await updateEventSeatPricing(eventId, payload);
+      const targetShowtimeId = propShowtimeId || (selectedShowtimeId ? Number(selectedShowtimeId) : null);
+      const result = targetShowtimeId
+        ? await updateShowtimeSeatPricing(targetShowtimeId, payload)
+        : await updateEventSeatPricing(eventId, payload);
+
       setSuccess(result?.message || 'Cập nhật giá vé theo hạng ghế thành công!');
 
-      // Update state with any updated category data returned
       if (result?.categories && Array.isArray(result.categories)) {
         setCategories(result.categories);
         const updated = {};
         for (const item of result.categories) {
-          updated[item.id] = item.price;
+          if (item && item.id != null) {
+            updated[item.id] = (item.price !== null && item.price !== undefined) ? String(item.price) : '';
+          }
         }
         setPrices(updated);
       }
 
-      if (onPricingUpdated) {
+      if (typeof onPricingUpdated === 'function') {
         onPricingUpdated();
       }
     } catch (err) {
@@ -130,6 +196,15 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const getShowtimeLabel = (showtimeId) => {
+    if (!showtimeId || !Array.isArray(showtimes) || showtimes.length === 0) {
+      return `#${showtimeId}`;
+    }
+    const found = showtimes.find((s) => s?.id === showtimeId);
+    if (!found) return `#${showtimeId}`;
+    return `#${showtimeId} (${formatVietnamTime(found.startTime)})`;
   };
 
   return (
@@ -175,7 +250,7 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
           alignItems: 'center',
           marginBottom: '18px',
           flexWrap: 'wrap',
-          gap: '8px',
+          gap: '12px',
         }}
       >
         <div>
@@ -193,21 +268,63 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
             Cấu hình giá bán vé (VNĐ) tương ứng với từng hạng ghế của các suất diễn trong sự kiện.
           </p>
         </div>
-        {!loading && categories.length > 0 && (
-          <span
-            style={{
-              padding: '4px 10px',
-              borderRadius: '12px',
-              fontSize: '12px',
-              fontWeight: '600',
-              backgroundColor: 'var(--code-bg, #1f2028)',
-              border: '1px solid var(--border, #2e303a)',
-              color: 'var(--text-h, #f1f5f9)',
-            }}
-          >
-            {categories.length} hạng ghế
-          </span>
-        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Showtime Selector Dropdown */}
+          {!propShowtimeId && Array.isArray(showtimes) && showtimes.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label
+                htmlFor="showtime-pricing-filter"
+                style={{ fontSize: '13px', color: 'var(--text, #9ca3af)', fontWeight: '500' }}
+              >
+                Suất diễn:
+              </label>
+              <select
+                id="showtime-pricing-filter"
+                value={selectedShowtimeId}
+                onChange={(e) => {
+                  setSelectedShowtimeId(e.target.value);
+                  setError(null);
+                  setSuccess(null);
+                }}
+                disabled={loading || saving}
+                style={{
+                  padding: '6px 10px',
+                  backgroundColor: 'var(--code-bg, #1f2028)',
+                  color: 'var(--text-h, #f1f5f9)',
+                  border: '1px solid var(--border, #2e303a)',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">Tất cả suất diễn ({showtimes.length})</option>
+                {showtimes.map((st) => (
+                  <option key={st.id} value={st.id}>
+                    #{st.id} - {formatVietnamTime(st.startTime)}{st.hasSeatMap ? '' : ' (Chưa có sơ đồ)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {!loading && categories.length > 0 && (
+            <span
+              style={{
+                padding: '4px 10px',
+                borderRadius: '12px',
+                fontSize: '12px',
+                fontWeight: '600',
+                backgroundColor: 'var(--code-bg, #1f2028)',
+                border: '1px solid var(--border, #2e303a)',
+                color: 'var(--text-h, #f1f5f9)',
+              }}
+            >
+              {categories.length} hạng ghế
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Loading state */}
@@ -330,7 +447,7 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty states */}
       {!loading && categories.length === 0 && (
         <div
           style={{
@@ -353,7 +470,13 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
             Chưa có hạng ghế nào
           </p>
           <p style={{ margin: '0 0 16px 0', fontSize: '13px' }}>
-            Chưa có hạng ghế nào cho sự kiện này. Vui lòng thêm suất diễn và tải lên sơ đồ ghế trước khi thiết lập giá vé.
+            {selectedShowtimeId && showtimes?.find((s) => s?.id === Number(selectedShowtimeId)) && !showtimes.find((s) => s?.id === Number(selectedShowtimeId))?.hasSeatMap
+              ? 'Suất diễn này chưa có sơ đồ ghế. Vui lòng tải lên sơ đồ ghế trước khi thiết lập giá vé.'
+              : Array.isArray(showtimes) && showtimes.length > 0 && !showtimes.some((s) => s?.hasSeatMap)
+              ? 'Các suất diễn chưa được tải lên sơ đồ ghế. Vui lòng tải lên sơ đồ ghế cho suất diễn để hệ thống tạo các hạng ghế.'
+              : Array.isArray(showtimes) && showtimes.length === 0
+              ? 'Chưa có suất diễn nào cho sự kiện này. Vui lòng thêm suất diễn và tải lên sơ đồ ghế trước khi thiết lập giá vé.'
+              : 'Chưa có hạng ghế nào cho sự kiện này. Vui lòng thêm suất diễn và tải lên sơ đồ ghế trước khi thiết lập giá vé.'}
           </p>
           <button
             type="button"
@@ -378,12 +501,14 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
         <form onSubmit={handleSave}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
             {categories.map((cat) => {
+              if (!cat || cat.id == null) return null;
               const currentPrice = prices[cat.id];
               const numPrice = Number(currentPrice);
               const isValidNumber =
                 currentPrice !== undefined &&
                 currentPrice !== '' &&
                 !isNaN(numPrice) &&
+                Number.isFinite(numPrice) &&
                 numPrice >= 0;
 
               return (
@@ -427,7 +552,7 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
                           gap: '8px',
                         }}
                       >
-                        {cat.name}
+                        {cat.name || 'Hạng ghế'}
                         <span
                           style={{
                             fontSize: '11px',
@@ -454,7 +579,10 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
                         }}
                       >
                         <span>
-                          Suất diễn: <strong style={{ color: 'var(--text-h, #f1f5f9)' }}>#{cat.showtimeId}</strong>
+                          Suất diễn:{' '}
+                          <strong style={{ color: 'var(--text-h, #f1f5f9)' }}>
+                            {getShowtimeLabel(cat.showtimeId)}
+                          </strong>
                         </span>
                         <span>•</span>
                         <span>
@@ -507,7 +635,7 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
                         onChange={(e) => handlePriceChange(cat.id, e.target.value)}
                         disabled={saving}
                         required
-                        placeholder="0"
+                        placeholder="Chưa thiết lập giá (VNĐ)"
                         style={{
                           flex: 1,
                           padding: '8px 12px',
@@ -537,7 +665,7 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
                       </span>
                     </div>
 
-                    {isValidNumber && (
+                    {isValidNumber ? (
                       <span
                         style={{
                           fontSize: '12px',
@@ -547,6 +675,17 @@ export default function SeatPricingManager({ eventId, onPricingUpdated = () => {
                         }}
                       >
                         ≈ {numPrice.toLocaleString('vi-VN')} VNĐ
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: '12px',
+                          color: '#f59e0b',
+                          fontWeight: '500',
+                          marginTop: '2px',
+                        }}
+                      >
+                        ⚠ Chưa thiết lập giá
                       </span>
                     )}
                   </div>
