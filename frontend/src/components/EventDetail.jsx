@@ -4,6 +4,7 @@ import { getEventById, getShowtimes, updateShowtimeSalesStatus, uploadSeatingCha
 import { EVENT_STATUS, getEventStatusInfo, SHOWTIME_STATUS, getShowtimeStatusInfo } from '../constants/eventStatus';
 import ShowtimeForm from './ShowtimeForm';
 import SeatingChartPreview from './SeatingChartPreview';
+import SeatPricingManager from './SeatPricingManager';
 import { formatVietnamTime, apiMessage, submissionGate } from '../events/management';
 import { importMessage } from '../events/seatImport';
 import { salesDisabledReason } from '../events/sales';
@@ -663,6 +664,9 @@ function EventDetailScreen({ id }) {
             })}
           </div>
         )}
+
+        {/* Thiết lập giá vé theo hạng ghế (Task S-15) */}
+        <SeatPricingManager eventId={id} />
 
         {/* Form thêm suất diễn */}
         <ShowtimeForm

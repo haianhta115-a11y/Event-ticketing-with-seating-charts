@@ -53,3 +53,7 @@ export const uploadSeatingChart = (showtimeId, file) => importChart(axiosClient,
 export const previewSeatingChart = (showtimeId, file) => previewChart(axiosClient, showtimeId, file);
 
 export const getOpenEvents = cursor => openEvents(axiosClient, cursor);
+
+export const getEventSeatPricing = (...args) => managementApi(axiosClient).getEventSeatPricing(...args);
+export const updateEventSeatPricing = (...args) => managementApi(axiosClient).updateEventSeatPricing(...args);
+

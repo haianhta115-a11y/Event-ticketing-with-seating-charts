@@ -50,6 +50,7 @@ builder.Services.AddOptions<SeatHoldOptions>()
         "SeatHolds:DurationMinutes must be between 1 and 1440 minutes.")
     .ValidateOnStart();
 builder.Services.AddScoped<SalesStatusService>();
+builder.Services.AddScoped<ISeatPricingService, SeatPricingService>();
 builder.Services.AddScoped<ExpiredSeatHoldCleanup>();
 builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddActivationEmail(builder.Configuration, builder.Environment);

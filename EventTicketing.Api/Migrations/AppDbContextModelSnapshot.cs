@@ -157,6 +157,47 @@ namespace EventTicketing.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("EventTicketing.Api.Entities.SalesTransition", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FromStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ShowtimeId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ToStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("ShowtimeId");
+
+                    b.HasIndex("EventId", "OccurredAtUtc");
+
+                    b.ToTable("sales_transitions", (string)null);
+                });
+
             modelBuilder.Entity("EventTicketing.Api.Entities.Seat", b =>
                 {
                     b.Property<int>("Id")
@@ -200,16 +241,12 @@ namespace EventTicketing.Api.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
-                    b.Property<int>("X")
-                        .ValueGeneratedOnAdd()
+                    b.Property<int?>("X")
                         .HasColumnType("integer")
-                        .HasDefaultValue(0)
                         .HasColumnName("x");
 
-                    b.Property<int>("Y")
-                        .ValueGeneratedOnAdd()
+                    b.Property<int?>("Y")
                         .HasColumnType("integer")
-                        .HasDefaultValue(0)
                         .HasColumnName("y");
 
                     b.HasKey("Id");
@@ -247,6 +284,13 @@ namespace EventTicketing.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("normalized_name");
+
+                    b.Property<decimal>("Price")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("price");
 
                     b.Property<int>("ShowtimeId")
                         .HasColumnType("integer")
@@ -406,6 +450,26 @@ namespace EventTicketing.Api.Migrations
                     b.HasOne("EventTicketing.Api.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("EventTicketing.Api.Entities.SalesTransition", b =>
+                {
+                    b.HasOne("EventTicketing.Api.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EventTicketing.Api.Entities.Event", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EventTicketing.Api.Entities.Showtime", null)
+                        .WithMany()
+                        .HasForeignKey("ShowtimeId")
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 

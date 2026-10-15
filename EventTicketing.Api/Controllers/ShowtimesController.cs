@@ -7,6 +7,7 @@ using EventTicketing.Api.Data;
 using EventTicketing.Api.Models.SeatingChart;
 using EventTicketing.Api.Services;
 using EventTicketing.Api.SeatMaps;
+using EventTicketing.Api.Models.Pricing;
 using Npgsql;
 
 namespace EventTicketing.Api.Controllers;
@@ -81,6 +82,45 @@ public class ShowtimesController(AppDbContext context, SeatingChartPreparation p
         {
             logger.LogError("Seat map import failed for showtime {ShowtimeId}; persistence details withheld.", showtimeId);
             return StatusCode(500, new { message = "Không thể lưu sơ đồ; dữ liệu trước đó được giữ nguyên." });
+        }
+    }
+
+    [HttpGet("{showtimeId:int}/pricing")]
+    [HttpGet("{showtimeId:int}/seat-categories")]
+    [HttpGet("{showtimeId:int}/seat-categories/pricing")]
+    [Authorize(Policy = AccessPolicies.EventManagement)]
+    public async Task<IActionResult> GetSeatPricing(int showtimeId, [FromServices] ISeatPricingService pricingService, CancellationToken ct)
+    {
+        try
+        {
+            var result = await pricingService.GetShowtimeSeatPricingAsync(showtimeId, User, ct);
+            return Ok(result);
+        }
+        catch (SeatPricingException ex)
+        {
+            return StatusCode(ex.Status, new { errorCode = ex.Code, message = ex.Message });
+        }
+    }
+
+    [HttpPut("{showtimeId:int}/pricing")]
+    [HttpPut("{showtimeId:int}/seat-categories")]
+    [HttpPut("{showtimeId:int}/seat-categories/pricing")]
+    [Authorize(Policy = AccessPolicies.EventManagement)]
+    public async Task<IActionResult> UpdateSeatPricing(int showtimeId, [FromBody] UpdateSeatPricingRequest request, [FromServices] ISeatPricingService pricingService, CancellationToken ct)
+    {
+        try
+        {
+            var result = await pricingService.UpdateShowtimeSeatPricingAsync(showtimeId, request, User, ct);
+            return Ok(new
+            {
+                success = true,
+                message = "Cập nhật giá vé theo hạng ghế thành công!",
+                categories = result
+            });
+        }
+        catch (SeatPricingException ex)
+        {
+            return StatusCode(ex.Status, new { errorCode = ex.Code, message = ex.Message });
         }
     }
 }
