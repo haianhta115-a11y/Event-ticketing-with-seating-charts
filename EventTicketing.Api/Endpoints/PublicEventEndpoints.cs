@@ -128,20 +128,54 @@ public static class PublicEventEndpoints
                 items.RemoveAt(take);
             }
 
-            var responseItems = items.Select(e => new PublicEventItemDto
+            var eventIds = items.Select(e => e.Id).ToList();
+            var validShowtimes = eventIds.Count > 0
+                ? await db.Showtimes
+                    .AsNoTracking()
+                    .Where(s => eventIds.Contains(s.EventId) && s.Status == ShowtimeStatus.OnSale && s.StartTime > now)
+                    .Select(s => new { s.Id, s.EventId })
+                    .ToListAsync(ct)
+                : [];
+
+            var validShowtimeIds = validShowtimes.Select(s => s.Id).ToList();
+
+            var categoryPrices = validShowtimeIds.Count > 0
+                ? await db.SeatCategories
+                    .AsNoTracking()
+                    .Where(c => validShowtimeIds.Contains(c.ShowtimeId) && c.Price != null)
+                    .Select(c => new { c.ShowtimeId, Price = c.Price!.Value })
+                    .ToListAsync(ct)
+                : [];
+
+            var showtimeToEvent = validShowtimes.ToDictionary(s => s.Id, s => s.EventId);
+            var pricesByEvent = categoryPrices
+                .GroupBy(c => showtimeToEvent[c.ShowtimeId])
+                .ToDictionary(
+                    g => g.Key,
+                    g => new
+                    {
+                        MinPrice = (decimal?)g.Min(x => x.Price),
+                        MaxPrice = (decimal?)g.Max(x => x.Price)
+                    });
+
+            var responseItems = items.Select(e =>
             {
-                EventId = e.Id,
-                Name = e.Name,
-                Location = e.Location,
-                ImageUrl = e.ImageUrl,
-                ShowtimeCount = e.ShowtimeCount,
-                NearestShowtime = new PublicNearestShowtimeDto
+                pricesByEvent.TryGetValue(e.Id, out var pricing);
+                return new PublicEventItemDto
                 {
-                    Id = e.NearestShowtime!.Id,
-                    StartTime = e.NearestShowtime.StartTime
-                },
-                MinPrice = null, // TODO: Cập nhật giá ở story S-15
-                MaxPrice = null  // TODO: Cập nhật giá ở story S-15
+                    EventId = e.Id,
+                    Name = e.Name,
+                    Location = e.Location,
+                    ImageUrl = e.ImageUrl,
+                    ShowtimeCount = e.ShowtimeCount,
+                    NearestShowtime = new PublicNearestShowtimeDto
+                    {
+                        Id = e.NearestShowtime!.Id,
+                        StartTime = e.NearestShowtime.StartTime
+                    },
+                    MinPrice = pricing?.MinPrice,
+                    MaxPrice = pricing?.MaxPrice
+                };
             }).ToList();
 
             var response = new PublicEventListResponse
@@ -184,6 +218,12 @@ public static class PublicEventEndpoints
                 return Results.Ok(new { id = id, isOnSale = false });
             }
 
+            var prices = await db.SeatCategories
+                .AsNoTracking()
+                .Where(c => c.ShowtimeId == id && c.Price != null)
+                .Select(c => c.Price!.Value)
+                .ToListAsync(ct);
+
             var dto = new PublicShowtimeDetailDto
             {
                 Id = showtime.Id,
@@ -195,8 +235,8 @@ public static class PublicEventEndpoints
                 ImageUrl = showtime.Event.ImageUrl,
                 StartTime = showtime.StartTime,
                 EndTime = showtime.EndTime,
-                MinPrice = null, // TODO: Cập nhật giá ở story S-15
-                MaxPrice = null  // TODO: Cập nhật giá ở story S-15
+                MinPrice = prices.Count > 0 ? prices.Min() : null,
+                MaxPrice = prices.Count > 0 ? prices.Max() : null
             };
 
             return Results.Ok(dto);

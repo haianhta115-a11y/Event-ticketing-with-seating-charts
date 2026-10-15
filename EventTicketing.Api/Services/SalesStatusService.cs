@@ -7,10 +7,19 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EventTicketing.Api.Services;
 
-public sealed class SalesStatusException(int status, string code, string message) : Exception(message)
+public sealed class SalesStatusException : Exception
 {
-    public int Status { get; } = status;
-    public string Code { get; } = code;
+    public int Status { get; }
+    public string Code { get; }
+    public IReadOnlyList<string> UnpricedCategories { get; }
+
+    public SalesStatusException(int status, string code, string message, IReadOnlyList<string>? unpricedCategories = null)
+        : base(message)
+    {
+        Status = status;
+        Code = code;
+        UnpricedCategories = unpricedCategories ?? Array.Empty<string>();
+    }
 }
 
 public sealed class SalesStatusService(AppDbContext db, TimeProvider clock, IAuthorizationService authorization)
@@ -77,6 +86,23 @@ public sealed class SalesStatusService(AppDbContext db, TimeProvider clock, IAut
             await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({id})", ct);
             if (!await db.Seats.AnyAsync(s => s.ShowtimeId == id, ct))
                 throw new SalesStatusException(409, "SEAT_MAP_REQUIRED", "Cần nạp sơ đồ ghế trước khi mở bán.");
+
+            var unpricedCategories = await db.SeatCategories
+                .Where(c => c.ShowtimeId == id && c.Price == null)
+                .OrderBy(c => c.Id)
+                .Select(c => c.Name)
+                .Distinct()
+                .ToListAsync(ct);
+
+            if (unpricedCategories.Count > 0)
+            {
+                var unpricedListStr = string.Join(", ", unpricedCategories);
+                throw new SalesStatusException(
+                    409,
+                    "SEAT_PRICING_REQUIRED",
+                    $"Cần thiết lập giá vé cho các hạng ghế trước khi mở bán: {unpricedListStr}.",
+                    unpricedCategories);
+            }
         }
         if (show.Status == ShowtimeStatus.Draft && next == ShowtimeStatus.Closed)
             throw new SalesStatusException(409, "INVALID_SALES_TRANSITION", "Suất nháp chưa mở bán để đóng.");

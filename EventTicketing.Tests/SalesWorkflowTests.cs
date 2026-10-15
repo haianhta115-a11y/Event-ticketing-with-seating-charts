@@ -31,7 +31,7 @@ public sealed class SalesWorkflowTests : IAsyncLifetime
 
     private async Task AddMap()
     {
-        var category = new SeatCategory { ShowtimeId = showId, Name = "VIP", NormalizedName = "VIP" };
+        var category = new SeatCategory { ShowtimeId = showId, Name = "VIP", NormalizedName = "VIP", Price = 100000m };
         database.Context.SeatCategories.Add(category); await database.Context.SaveChangesAsync();
         var seat = new Seat { ShowtimeId = showId, SeatCategoryId = category.Id, Row = "A", Number = "1" };
         database.Context.Seats.Add(seat); await database.Context.SaveChangesAsync(); seatId = seat.Id;
@@ -88,6 +88,31 @@ public sealed class SalesWorkflowTests : IAsyncLifetime
         using var db = database.CreateContext();
         Assert.Equal(ShowtimeStatus.Draft, (await db.Showtimes.SingleAsync()).Status);
         Assert.Single(await db.SalesTransitions.ToListAsync()); // publication only
+    }
+
+    [Fact]
+    public async Task OpeningWithoutConfiguredPrices_IsRejectedWithUnpricedCategoryNames()
+    {
+        var category1 = new SeatCategory { ShowtimeId = showId, Name = "VIP", NormalizedName = "VIP", Price = null };
+        var category2 = new SeatCategory { ShowtimeId = showId, Name = "Standard", NormalizedName = "STANDARD", Price = null };
+        database.Context.SeatCategories.AddRange(category1, category2);
+        await database.Context.SaveChangesAsync();
+        var seat1 = new Seat { ShowtimeId = showId, SeatCategoryId = category1.Id, Row = "A", Number = "1" };
+        var seat2 = new Seat { ShowtimeId = showId, SeatCategoryId = category2.Id, Row = "B", Number = "1" };
+        database.Context.Seats.AddRange(seat1, seat2);
+        await database.Context.SaveChangesAsync();
+
+        await client.PutAsync($"/api/events/{eventId}/publish", null);
+        var response = await Sales("OnSale");
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("SEAT_PRICING_REQUIRED", body.GetProperty("errorCode").GetString());
+        var message = body.GetProperty("message").GetString();
+        Assert.Contains("VIP", message);
+        Assert.Contains("Standard", message);
+        var unpriced = body.GetProperty("unpricedCategories").EnumerateArray().Select(x => x.GetString()).ToList();
+        Assert.Contains("VIP", unpriced);
+        Assert.Contains("Standard", unpriced);
     }
 
     [Theory]
