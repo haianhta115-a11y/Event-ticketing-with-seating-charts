@@ -6,6 +6,8 @@ import {
   createOrderForShowtime,
   getOrderById,
   getPendingOrderForShowtime,
+  signMockPayment,
+  sendMockWebhook,
 } from '../src/api/paymentApi.js';
 
 test('paymentApi calls expected backend routes', async () => {
@@ -33,7 +35,7 @@ test('paymentApi calls expected backend routes', async () => {
             orderId: 10,
             orderCode: 'ORD-10',
             amount: 300000,
-            redirectUrl: 'http://127.0.0.1:5173/sandbox-gateway?orderId=10',
+            redirectUrl: 'http://127.0.0.1:5173/mock-gateway?orderId=10',
           },
         };
       }
@@ -42,6 +44,23 @@ test('paymentApi calls expected backend routes', async () => {
           data: {
             success: true,
             order: { id: 10, totalAmount: 300000, status: 'Pending' },
+          },
+        };
+      }
+      if (url === '/payments/mock/sign') {
+        return {
+          data: {
+            signature: 'mock_sig_123',
+            payload: '10|300000|TXN-1|true',
+          },
+        };
+      }
+      if (url === '/payments/mock/webhook') {
+        return {
+          data: {
+            success: true,
+            outcome: 'Paid',
+            message: 'Thanh toán thành công.',
           },
         };
       }
@@ -73,6 +92,30 @@ test('paymentApi calls expected backend routes', async () => {
     assert.equal(pendingRes.id, 10);
     assert.equal(calls[3][0], 'get');
     assert.equal(calls[3][1], '/showtimes/5/orders/pending');
+
+    // 5. signMockPayment (SCRUM-35)
+    const signRes = await signMockPayment({
+      orderId: 10,
+      transactionId: 'TXN-1',
+      amount: 300000,
+      success: true,
+    });
+    assert.equal(signRes.signature, 'mock_sig_123');
+    assert.equal(calls[4][0], 'post');
+    assert.equal(calls[4][1], '/payments/mock/sign');
+
+    // 6. sendMockWebhook (SCRUM-35)
+    const webhookRes = await sendMockWebhook({
+      orderId: 10,
+      transactionId: 'TXN-1',
+      amount: 300000,
+      success: true,
+      signature: 'mock_sig_123',
+    });
+    assert.equal(webhookRes.success, true);
+    assert.equal(webhookRes.outcome, 'Paid');
+    assert.equal(calls[5][0], 'post');
+    assert.equal(calls[5][1], '/payments/mock/webhook');
   } finally {
     axiosClient.get = originalGet;
     axiosClient.post = originalPost;

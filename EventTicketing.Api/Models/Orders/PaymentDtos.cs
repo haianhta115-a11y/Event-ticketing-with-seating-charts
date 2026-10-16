@@ -12,6 +12,23 @@ public sealed record PaymentResultRequest(
     decimal Amount,
     bool Success);
 
+public sealed record MockWebhookRequest(
+    int OrderId,
+    string? TransactionId,
+    decimal Amount,
+    bool Success,
+    string? Signature = null);
+
+public sealed record MockSignRequest(
+    int OrderId,
+    string? TransactionId,
+    decimal Amount,
+    bool Success);
+
+public sealed record MockSignResponse(
+    string Signature,
+    string Payload);
+
 public enum InitiatePaymentOutcome
 {
     Ok,

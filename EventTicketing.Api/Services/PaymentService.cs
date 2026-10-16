@@ -13,7 +13,8 @@ public sealed class PaymentService(
     AppDbContext db,
     IReservationClock clock,
     IOptions<PaymentOptions>? options = null,
-    ILogger<PaymentService>? logger = null) : IPaymentService
+    ILogger<PaymentService>? logger = null,
+    IPaymentGateway? gateway = null) : IPaymentService
 {
     private const int PaymentLockCategory = 2001;
 
@@ -50,11 +51,12 @@ public sealed class PaymentService(
         }
 
         var orderCode = $"ORD-{order.Id}";
-        var amountStr = order.TotalAmount.ToString(CultureInfo.InvariantCulture);
         var paymentOptions = options?.Value ?? new PaymentOptions();
-        var baseUrl = paymentOptions.SandboxBaseUrl;
-        var separator = baseUrl.Contains('?') ? "&" : "?";
-        var redirectUrl = $"{baseUrl}{separator}orderId={order.Id}&orderCode={Uri.EscapeDataString(orderCode)}&amount={amountStr}&returnUrl={Uri.EscapeDataString(paymentOptions.ReturnUrl)}";
+        var effectiveGateway = gateway ?? (string.Equals(paymentOptions.Provider, "Sandbox", StringComparison.OrdinalIgnoreCase)
+            ? new SandboxPaymentGateway(options)
+            : new MockPaymentGateway(options));
+
+        var redirectUrl = effectiveGateway.CreatePaymentUrl(order.Id, orderCode, order.TotalAmount, paymentOptions.ReturnUrl);
 
         var redirectDto = new PaymentRedirectDto(order.Id, orderCode, order.TotalAmount, redirectUrl);
 
