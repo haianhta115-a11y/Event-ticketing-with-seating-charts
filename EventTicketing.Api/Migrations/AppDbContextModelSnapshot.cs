@@ -130,6 +130,30 @@ namespace EventTicketing.Api.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
+                    b.Property<decimal?>("PaidAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("paid_amount");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.Property<string>("PaymentReference")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("payment_reference");
+
+                    b.Property<string>("PaymentReviewReason")
+                        .HasColumnType("text")
+                        .HasColumnName("payment_review_reason");
+
+                    b.Property<bool>("RequiresPaymentReview")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("requires_payment_review");
+
                     b.Property<int>("ShowtimeId")
                         .HasColumnType("integer")
                         .HasColumnName("showtime_id");

@@ -57,6 +57,8 @@ builder.Services.AddOptions<OrderOptions>()
     .Validate(options => options.PaymentTimeoutMinutes is > 0 and <= 1440,
         "Orders:PaymentTimeoutMinutes must be between 1 and 1440 minutes.")
     .ValidateOnStart();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.Configure<PaymentOptions>(builder.Configuration.GetSection(PaymentOptions.SectionName));
 builder.Services.AddScoped<ExpiredSeatHoldCleanup>();
 builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddActivationEmail(builder.Configuration, builder.Environment);
