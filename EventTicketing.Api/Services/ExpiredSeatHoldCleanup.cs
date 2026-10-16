@@ -9,9 +9,9 @@ public sealed class ExpiredSeatHoldCleanup(AppDbContext db, IReservationClock cl
     public async Task<int> ExecuteAsync(CancellationToken ct = default)
     {
         var now = await clock.NowAsync(db, ct);
-        // Conditional UPDATE, never a stale ID list. PostgreSQL rechecks this predicate
-        // after waiting for a concurrent replacement/renewal. No order model exists yet.
-        return await db.Seats.Where(s => s.Status == SeatStatus.Held && s.HeldUntil <= now)
+        // Conditional UPDATE, never a stale ID list. Exclude seats in active pending orders (S-12.4)
+        return await db.Seats.Where(s => s.Status == SeatStatus.Held && s.HeldUntil <= now
+            && !db.OrderItems.Any(oi => oi.SeatId == s.Id && oi.Order.Status == OrderStatus.Pending && oi.Order.ExpiresAt > now))
             .ExecuteUpdateAsync(setter => setter
                 .SetProperty(s => s.Status, SeatStatus.Available)
                 .SetProperty(s => s.HeldByUserId, (int?)null)

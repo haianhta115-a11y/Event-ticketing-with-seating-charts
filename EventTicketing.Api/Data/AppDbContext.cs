@@ -19,6 +19,8 @@ public class AppDbContext : DbContext
     public DbSet<Event> Events { get; set; }
     public DbSet<Showtime> Showtimes { get; set; }
     public DbSet<SalesTransition> SalesTransitions { get; set; }
+    public DbSet<Order> Orders { get; set; }
+    public DbSet<OrderItem> OrderItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -164,6 +166,87 @@ public class AppDbContext : DbContext
                 .WithMany(ev => ev.Showtimes)
                 .HasForeignKey(e => e.EventId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Order>(entity =>
+        {
+            entity.ToTable("orders", table =>
+            {
+                table.HasCheckConstraint("CK_orders_status", "status IN ('PENDING', 'PAID', 'CANCELLED', 'EXPIRED')");
+            });
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("user_id");
+            entity.Property(e => e.ShowtimeId).HasColumnName("showtime_id");
+            entity.Property(e => e.TotalAmount).HasColumnName("total_amount").HasPrecision(18, 2);
+            entity.Property(e => e.ExpiresAt).HasColumnName("expires_at").HasColumnType("timestamp with time zone");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp with time zone");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp with time zone");
+
+            entity.Property(e => e.Status)
+                .HasColumnName("status")
+                .HasConversion(
+                    status => status.ToString().ToUpperInvariant(),
+                    value => Enum.Parse<OrderStatus>(value, true))
+                .HasMaxLength(20);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Showtime)
+                .WithMany()
+                .HasForeignKey(e => e.ShowtimeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // T-37: "Chống bấm đúp bằng ràng buộc 'một đơn chờ cho mỗi người mỗi suất'."
+            entity.HasIndex(e => new { e.UserId, e.ShowtimeId })
+                .IsUnique()
+                .HasFilter("status = 'PENDING'");
+
+            entity.HasIndex(e => new { e.ShowtimeId, e.Status });
+        });
+
+        modelBuilder.Entity<OrderItem>(entity =>
+        {
+            entity.ToTable("order_items", table =>
+            {
+                table.HasCheckConstraint("CK_order_items_status", "status IN ('PENDING', 'PAID', 'CANCELLED', 'EXPIRED')");
+            });
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.ShowtimeId).HasColumnName("showtime_id");
+            entity.Property(e => e.SeatId).HasColumnName("seat_id");
+            entity.Property(e => e.UnitPrice).HasColumnName("unit_price").HasPrecision(18, 2);
+
+            entity.Property(e => e.Status)
+                .HasColumnName("status")
+                .HasConversion(
+                    status => status.ToString().ToUpperInvariant(),
+                    value => Enum.Parse<OrderStatus>(value, true))
+                .HasMaxLength(20);
+
+            entity.HasOne(e => e.Order)
+                .WithMany(o => o.OrderItems)
+                .HasForeignKey(e => e.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Seat)
+                .WithMany()
+                .HasForeignKey(e => e.SeatId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Showtime)
+                .WithMany()
+                .HasForeignKey(e => e.ShowtimeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // T-36: "mỗi ghế chỉ được nằm trong một đơn chưa huỷ của cùng suất diễn — có ràng buộc (Index filter)"
+            entity.HasIndex(e => new { e.ShowtimeId, e.SeatId })
+                .IsUnique()
+                .HasFilter("status <> 'CANCELLED' AND status <> 'EXPIRED'");
+
+            entity.HasIndex(e => e.OrderId);
         });
 
         // Seed Roles

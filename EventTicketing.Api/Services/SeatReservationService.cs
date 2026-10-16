@@ -210,7 +210,11 @@ public sealed class SeatReservationService(AppDbContext db, IReservationClock cl
                 s.Number,
                 s.X,
                 s.Y,
-                Status = (s.Status == SeatStatus.Held && s.HeldUntil <= now) ? SeatStatus.Available : s.Status,
+                Status = (s.Status == SeatStatus.Sold || db.OrderItems.Any(oi => oi.SeatId == s.Id && oi.ShowtimeId == ShowtimeId && oi.Order.Status == OrderStatus.Paid))
+                    ? SeatStatus.Sold
+                    : (s.Status == SeatStatus.Held && s.HeldUntil <= now)
+                        ? SeatStatus.Available
+                        : s.Status,
                 s.HeldUntil,
                 s.HeldByUserId
             })
