@@ -454,4 +454,283 @@ public sealed class OrderManagementUnitTests
         var objectResult = Assert.IsType<ObjectResult>(response);
         Assert.Equal(StatusCodes.Status409Conflict, objectResult.StatusCode);
     }
+
+    [Fact]
+    public async Task SCRUM_109_CreateOrder_ClientProvidedTotalAmount_IsIgnoredAndCalculatedFromServer()
+    {
+        // AC 2: "Giả sử tôi sửa tổng tiền trong yêu cầu gửi lên, Khi máy chủ xử lý, Thì tổng vẫn được tính lại từ giá hạng ghế, số sửa bị bỏ qua"
+        var (db, _, service, now) = CreateTestHarness(paymentTimeoutMinutes: 15);
+        const int userId = 42;
+        const int showtimeId = 10;
+
+        var evt = new Event { Id = 1, Name = "Rock Concert", Description = "Desc", Location = "Stadium", Status = EventStatus.Published };
+        var showtime = new Showtime { Id = showtimeId, EventId = 1, Event = evt, StartTime = now.AddHours(3), Status = ShowtimeStatus.OnSale };
+        var categoryVIP = new SeatCategory { Id = 1, ShowtimeId = showtimeId, Name = "VIP", NormalizedName = "VIP", Price = 500000m };
+        var categoryStandard = new SeatCategory { Id = 2, ShowtimeId = showtimeId, Name = "Standard", NormalizedName = "STANDARD", Price = 250000m };
+
+        var seat1 = new Seat
+        {
+            Id = 101,
+            ShowtimeId = showtimeId,
+            SeatCategoryId = 1,
+            SeatCategory = categoryVIP,
+            Row = "A",
+            Number = "1",
+            Status = SeatStatus.Held,
+            HeldByUserId = userId,
+            HeldUntil = now.AddMinutes(5)
+        };
+
+        var seat2 = new Seat
+        {
+            Id = 102,
+            ShowtimeId = showtimeId,
+            SeatCategoryId = 2,
+            SeatCategory = categoryStandard,
+            Row = "B",
+            Number = "5",
+            Status = SeatStatus.Held,
+            HeldByUserId = userId,
+            HeldUntil = now.AddMinutes(5)
+        };
+
+        db.Events.Add(evt);
+        db.Showtimes.Add(showtime);
+        db.SeatCategories.AddRange(categoryVIP, categoryStandard);
+        db.Seats.AddRange(seat1, seat2);
+        await db.SaveChangesAsync();
+
+        // Controller test with tampered TotalAmount
+        var controller = new OrdersController(service)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [
+                        new Claim(ClaimTypes.NameIdentifier, "42"),
+                        new Claim(ClaimTypes.Role, "Buyer")
+                    ], "TestAuth"))
+                }
+            }
+        };
+
+        // Client attempts to send tampered total amount (e.g. 1000 VND instead of 750,000 VND)
+        var tamperedRequest = new CreateOrderRequest(ShowtimeId: showtimeId, TotalAmount: 1000m);
+        var response = await controller.CreateOrder(tamperedRequest, CancellationToken.None);
+
+        var createdResult = Assert.IsType<ObjectResult>(response);
+        Assert.Equal(StatusCodes.Status201Created, createdResult.StatusCode);
+
+        // Verify the created order in DB has the genuine total calculated from seat prices (500k + 250k = 750k)
+        var orderInDb = await db.Orders.Include(o => o.OrderItems).FirstAsync();
+        Assert.Equal(750000m, orderInDb.TotalAmount);
+        Assert.NotEqual(tamperedRequest.TotalAmount, orderInDb.TotalAmount);
+    }
+
+    [Fact]
+    public async Task SCRUM_110_GetOrderById_ReturnsEventNameShowtimeAndItemsWithCategoryAndPrice()
+    {
+        // AC 1: "Giả sử đơn vừa được tạo, Khi mở trang đơn, Thì thấy tên sự kiện, suất, từng ghế kèm hạng và đơn giá, tổng tiền và thời gian còn lại để thanh toán"
+        var (db, _, service, now) = CreateTestHarness(paymentTimeoutMinutes: 15);
+        const int userId = 42;
+        const int showtimeId = 10;
+
+        var evt = new Event { Id = 1, Name = "Symphony Orchestra 2026", Description = "Desc", Location = "Opera House", Status = EventStatus.Published };
+        var showtime = new Showtime { Id = showtimeId, EventId = 1, Event = evt, StartTime = now.AddHours(2), Status = ShowtimeStatus.OnSale };
+        var category = new SeatCategory { Id = 1, ShowtimeId = showtimeId, Name = "VIP Gold", NormalizedName = "VIP GOLD", Price = 350000m };
+
+        var seat = new Seat
+        {
+            Id = 201,
+            ShowtimeId = showtimeId,
+            SeatCategoryId = 1,
+            SeatCategory = category,
+            Row = "C",
+            Number = "12",
+            Status = SeatStatus.Held,
+            HeldByUserId = userId,
+            HeldUntil = now.AddMinutes(10)
+        };
+
+        db.Events.Add(evt);
+        db.Showtimes.Add(showtime);
+        db.SeatCategories.Add(category);
+        db.Seats.Add(seat);
+        await db.SaveChangesAsync();
+
+        var createResult = await service.CreateOrderFromHoldsAsync(showtimeId, userId);
+        Assert.True(createResult.IsSuccess);
+        var orderId = createResult.Order!.Id;
+
+        // Fetch order details via GetOrderByIdAsync
+        var orderDto = await service.GetOrderByIdAsync(orderId, userId);
+        Assert.NotNull(orderDto);
+        Assert.Equal("Symphony Orchestra 2026", orderDto.EventName);
+        Assert.Equal(showtime.StartTime, orderDto.ShowtimeStartTimeUtc);
+        Assert.Equal("Pending", orderDto.Status);
+        Assert.False(orderDto.IsExpired);
+        Assert.Equal(350000m, orderDto.TotalAmount);
+        Assert.Equal(900, orderDto.RemainingSeconds); // 15 mins = 900 seconds
+        Assert.Single(orderDto.Items);
+
+        var item = orderDto.Items[0];
+        Assert.Equal("C", item.Row);
+        Assert.Equal("12", item.Number);
+        Assert.Equal("VIP Gold", item.CategoryName);
+        Assert.Equal(350000m, item.UnitPrice);
+    }
+
+    [Fact]
+    public async Task SCRUM_110_GetOrderById_WhenOrderExpired_ReturnsStatusExpiredAndZeroRemaining()
+    {
+        // AC 3: "Giả sử thời hạn thanh toán đã hết, Khi mở trang đơn, Thì thấy đơn đã hết hạn và nút thanh toán bị ẩn"
+        var (db, clockMock, service, now) = CreateTestHarness(paymentTimeoutMinutes: 15);
+        const int userId = 42;
+        const int showtimeId = 10;
+
+        var evt = new Event { Id = 1, Name = "Jazz Festival", Description = "Desc", Location = "Park", Status = EventStatus.Published };
+        var showtime = new Showtime { Id = showtimeId, EventId = 1, Event = evt, StartTime = now.AddHours(2), Status = ShowtimeStatus.OnSale };
+        var category = new SeatCategory { Id = 1, ShowtimeId = showtimeId, Name = "Standard", NormalizedName = "STANDARD", Price = 150000m };
+
+        var seat = new Seat
+        {
+            Id = 301,
+            ShowtimeId = showtimeId,
+            SeatCategoryId = 1,
+            SeatCategory = category,
+            Row = "D",
+            Number = "1",
+            Status = SeatStatus.Held,
+            HeldByUserId = userId,
+            HeldUntil = now.AddMinutes(5)
+        };
+
+        db.Events.Add(evt);
+        db.Showtimes.Add(showtime);
+        db.SeatCategories.Add(category);
+        db.Seats.Add(seat);
+        await db.SaveChangesAsync();
+
+        var createResult = await service.CreateOrderFromHoldsAsync(showtimeId, userId);
+        Assert.True(createResult.IsSuccess);
+        var orderId = createResult.Order!.Id;
+
+        // Advance time past the payment expiration timeout (e.g. 16 minutes later)
+        var futureTime = now.AddMinutes(16);
+        clockMock.Setup(c => c.NowAsync(It.IsAny<AppDbContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(futureTime);
+
+        // Fetch order details after expiration
+        var orderDto = await service.GetOrderByIdAsync(orderId, userId);
+        Assert.NotNull(orderDto);
+        Assert.Equal("Expired", orderDto.Status);
+        Assert.True(orderDto.IsExpired);
+        Assert.Equal(0, orderDto.RemainingSeconds);
+
+        // Verify the database order status was updated to Expired
+        var orderInDb = await db.Orders.FindAsync(orderId);
+        Assert.NotNull(orderInDb);
+        Assert.Equal(OrderStatus.Expired, orderInDb.Status);
+    }
+
+    [Fact]
+    public async Task SCRUM_110_OrdersController_GetOrder_ReturnsOk_WhenExists()
+    {
+        var mockService = new Mock<IOrderService>();
+        var orderDto = new OrderDto(
+            Id: 5,
+            UserId: 42,
+            ShowtimeId: 10,
+            EventName: "Live Music",
+            ShowtimeStartTimeUtc: DateTime.UtcNow.AddHours(1),
+            ShowtimeEndTimeUtc: null,
+            Status: "Pending",
+            TotalAmount: 300000m,
+            ExpiresAtUtc: DateTime.UtcNow.AddMinutes(15),
+            CreatedAtUtc: DateTime.UtcNow,
+            ServerTimeUtc: DateTime.UtcNow,
+            RemainingSeconds: 900,
+            IsExpired: false,
+            Items: [new OrderItemDto(1, 101, "A", "1", "VIP", 300000m)]);
+
+        mockService.Setup(s => s.GetOrderForUserAsync(5, 42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GetOrderResult.Success(orderDto));
+
+        var controller = new OrdersController(mockService.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [
+                        new Claim(ClaimTypes.NameIdentifier, "42"),
+                        new Claim(ClaimTypes.Role, "Buyer")
+                    ], "TestAuth"))
+                }
+            }
+        };
+
+        var response = await controller.GetOrder(5, CancellationToken.None);
+        var okResult = Assert.IsType<OkObjectResult>(response);
+        var resultDto = Assert.IsType<OrderDto>(okResult.Value);
+        Assert.Equal("Live Music", resultDto.EventName);
+        Assert.Equal(300000m, resultDto.TotalAmount);
+    }
+
+    [Fact]
+    public async Task SCRUM_110_OrdersController_GetOrder_ReturnsNotFound_WhenDoesNotExist()
+    {
+        var mockService = new Mock<IOrderService>();
+        mockService.Setup(s => s.GetOrderForUserAsync(999, 42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GetOrderResult.NotFound());
+
+        var controller = new OrdersController(mockService.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [
+                        new Claim(ClaimTypes.NameIdentifier, "42"),
+                        new Claim(ClaimTypes.Role, "Buyer")
+                    ], "TestAuth"))
+                }
+            }
+        };
+
+        var response = await controller.GetOrder(999, CancellationToken.None);
+        Assert.IsType<NotFoundObjectResult>(response);
+    }
+
+    [Fact]
+    public async Task SCRUM_110_OrdersController_GetOrder_Returns403Forbidden_WhenAccessingAnotherUsersOrder()
+    {
+        // T-39: "mở đơn người khác thì 403"
+        var mockService = new Mock<IOrderService>();
+        mockService.Setup(s => s.GetOrderForUserAsync(88, 42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GetOrderResult.Forbidden());
+
+        var controller = new OrdersController(mockService.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [
+                        new Claim(ClaimTypes.NameIdentifier, "42"),
+                        new Claim(ClaimTypes.Role, "Buyer")
+                    ], "TestAuth"))
+                }
+            }
+        };
+
+        var response = await controller.GetOrder(88, CancellationToken.None);
+        var objectResult = Assert.IsType<ObjectResult>(response);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+    }
 }

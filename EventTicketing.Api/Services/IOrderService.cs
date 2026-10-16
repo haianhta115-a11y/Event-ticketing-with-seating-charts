@@ -14,6 +14,11 @@ public interface IOrderService
         int userId,
         CancellationToken cancellationToken = default);
 
+    Task<GetOrderResult> GetOrderForUserAsync(
+        int orderId,
+        int userId,
+        CancellationToken cancellationToken = default);
+
     Task<OrderDto?> GetPendingOrderForShowtimeAsync(
         int showtimeId,
         int userId,

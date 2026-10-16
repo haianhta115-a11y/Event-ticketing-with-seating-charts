@@ -6,6 +6,7 @@ import { seatClick } from '../events/seatClick';
 import { seatMapGeometry, computeFitScale, initialSeatScale, maximumSeatScale, zoomAtPoint } from '../events/seatMapGeometry';
 import { categoryPalette } from '../events/seatImport';
 import { seatPresentation, rowLabels, existingPrice, blockedSeatMessage } from '../events/seatPresentation';
+import { createOrder } from '../api/ordersApi.js';
 
 /**
  * Tối ưu hóa từng ghế bằng React.memo để tránh render lại toàn bộ hàng nghìn ghế.
@@ -159,6 +160,29 @@ function SeatMapScreen({ id }) {
   };
   const handleConfirmBatch = async () => {
     if (batchIds.length && await confirmBatch(batchIds)) setBatchIds([]);
+  };
+
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [orderError, setOrderError] = useState(null);
+
+  const handleCreateOrder = async () => {
+    try {
+      setIsCreatingOrder(true);
+      setOrderError(null);
+      const res = await createOrder(id);
+      if (res?.success && res.order) {
+        navigate(`/orders/${res.order.id}`);
+      }
+    } catch (err) {
+      if (err.response?.status === 409 && err.response?.data?.errorCode === 'SEAT_HOLD_EXPIRED') {
+        setInteractionNotice('Ghế giữ đã hết hạn. Vui lòng chọn lại.');
+        await refresh();
+      } else {
+        setOrderError(err.response?.data?.message || 'Không thể tạo đơn hàng. Vui lòng thử lại.');
+      }
+    } finally {
+      setIsCreatingOrder(false);
+    }
   };
 
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -1280,6 +1304,7 @@ onClick={() => { dismissNotice(); setSelectedSeat(null); }}
           {/* Nút xác nhận đặt vé */}
           <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
             {holdError && <div style={{ color: '#ef4444', fontSize: '13px' }}>{holdError}</div>}
+            {orderError && <div style={{ color: '#ef4444', fontSize: '13px' }}>{orderError}</div>}
 
             <div style={{ display: 'flex', gap: '10px' }}>
               {selectedSeat.displayStatus === 'Available' && (
@@ -1303,11 +1328,11 @@ onClick={() => { dismissNotice(); setSelectedSeat(null); }}
 
               {selectedSeat.displayStatus === 'HeldByMe' && session && (
                 <button
-                  disabled={isHolding}
+                  disabled={isHolding || isCreatingOrder}
                   className="font-bold py-2 px-6 rounded shadow-md transition duration-200 bg-green-600 hover:bg-green-700 text-white cursor-pointer"
-                  onClick={() => setIsPaymentModalOpen(true)}
+                  onClick={handleCreateOrder}
                 >
-                  Xác nhận Đặt vé
+                  {isCreatingOrder ? 'Đang tạo đơn...' : 'Xác nhận Đặt vé'}
                 </button>
               )}
             </div>

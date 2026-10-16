@@ -112,17 +112,26 @@ public sealed class OrdersController(IOrderService orderService) : ControllerBas
         var userId = AccessPolicies.UserId(User);
         if (!userId.HasValue) return Unauthorized();
 
-        var order = await orderService.GetOrderByIdAsync(id, userId.Value, ct);
-        if (order == null)
+        var result = await orderService.GetOrderForUserAsync(id, userId.Value, ct);
+        if (result.Status == GetOrderResultStatus.NotFound)
         {
             return NotFound(new
             {
                 success = false,
-                message = "Đơn hàng không tồn tại hoặc không thuộc quyền sở hữu của bạn."
+                message = "Đơn hàng không tồn tại."
             });
         }
 
-        return Ok(order);
+        if (result.Status == GetOrderResultStatus.Forbidden)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                success = false,
+                message = "Bạn không có quyền xem đơn hàng này."
+            });
+        }
+
+        return Ok(result.Order);
     }
 
     [HttpGet("showtimes/{showtimeId:int}/orders/pending")]

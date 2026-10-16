@@ -56,6 +56,8 @@ public sealed class OrderService(
         // 2. Chống bấm đúp / Idempotency: Kiểm tra nếu đã có đơn hàng PENDING còn hạn cho suất này
         // AC 3: "Giả sử tôi đã có một đơn đang chờ cho suất này, Khi bấm 'đặt vé' lần nữa, Thì được đưa về đơn đang chờ đó thay vì tạo đơn thứ hai"
         var existingPendingOrder = await db.Orders
+            .Include(o => o.Showtime)
+                .ThenInclude(s => s.Event)
             .Include(o => o.OrderItems)
                 .ThenInclude(oi => oi.Seat)
                     .ThenInclude(s => s.SeatCategory)
@@ -69,7 +71,7 @@ public sealed class OrderService(
             }
             logger?.LogInformation("User {UserId} already has active pending order {OrderId} for showtime {ShowtimeId}. Returning existing order.",
                 userId, existingPendingOrder.Id, showtimeId);
-            return CreateOrderResult.Success(MapToDto(existingPendingOrder, now), isExistingPendingOrder: true);
+            return CreateOrderResult.Success(MapToDto(existingPendingOrder, now, showtime), isExistingPendingOrder: true);
         }
 
         // 3. Đọc danh sách ghế đang giữ của user từ cơ sở dữ liệu
@@ -157,6 +159,8 @@ public sealed class OrderService(
             // Xử lý race condition khi 2 request gửi đồng thời vượt qua advisory lock hoặc chèn cùng lúc
             logger?.LogInformation("Concurrent order creation caught by unique constraint for user {UserId}, showtime {ShowtimeId}", userId, showtimeId);
             var racedOrder = await db.Orders
+                .Include(o => o.Showtime)
+                    .ThenInclude(s => s.Event)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Seat)
                         .ThenInclude(s => s.SeatCategory)
@@ -164,7 +168,7 @@ public sealed class OrderService(
 
             if (racedOrder != null)
             {
-                return CreateOrderResult.Success(MapToDto(racedOrder, now), isExistingPendingOrder: true);
+                return CreateOrderResult.Success(MapToDto(racedOrder, now, showtime), isExistingPendingOrder: true);
             }
             throw;
         }
@@ -172,21 +176,54 @@ public sealed class OrderService(
         logger?.LogInformation("Order {OrderId} successfully created for user {UserId}, showtime {ShowtimeId}, seats count {Count}, total {Total}",
             order.Id, userId, showtimeId, orderItems.Count, totalAmount);
 
-        return CreateOrderResult.Success(MapToDto(order, now), isExistingPendingOrder: false);
+        return CreateOrderResult.Success(MapToDto(order, now, showtime), isExistingPendingOrder: false);
     }
 
-    public async Task<OrderDto?> GetOrderByIdAsync(int orderId, int userId, CancellationToken cancellationToken = default)
+    public async Task<GetOrderResult> GetOrderForUserAsync(int orderId, int userId, CancellationToken cancellationToken = default)
     {
         var sampledNow = await clock.NowAsync(db, cancellationToken);
         var now = new DateTime(sampledNow.Ticks - sampledNow.Ticks % 10, DateTimeKind.Utc);
 
         var order = await db.Orders
+            .Include(o => o.Showtime)
+                .ThenInclude(s => s.Event)
             .Include(o => o.OrderItems)
                 .ThenInclude(oi => oi.Seat)
                     .ThenInclude(s => s.SeatCategory)
-            .FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == userId, cancellationToken);
+            .FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
 
-        return order == null ? null : MapToDto(order, now);
+        if (order == null)
+        {
+            return GetOrderResult.NotFound();
+        }
+
+        if (order.UserId != userId)
+        {
+            logger?.LogWarning("User {UserId} attempted to access order {OrderId} owned by user {OwnerId}",
+                userId, orderId, order.UserId);
+            return GetOrderResult.Forbidden();
+        }
+
+        if (order.Status == OrderStatus.Pending && order.ExpiresAt <= now)
+        {
+            order.Status = OrderStatus.Expired;
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Failed to persist expired status for order {OrderId}", orderId);
+            }
+        }
+
+        return GetOrderResult.Success(MapToDto(order, now));
+    }
+
+    public async Task<OrderDto?> GetOrderByIdAsync(int orderId, int userId, CancellationToken cancellationToken = default)
+    {
+        var result = await GetOrderForUserAsync(orderId, userId, cancellationToken);
+        return result.Order;
     }
 
     public async Task<OrderDto?> GetPendingOrderForShowtimeAsync(int showtimeId, int userId, CancellationToken cancellationToken = default)
@@ -195,6 +232,8 @@ public sealed class OrderService(
         var now = new DateTime(sampledNow.Ticks - sampledNow.Ticks % 10, DateTimeKind.Utc);
 
         var order = await db.Orders
+            .Include(o => o.Showtime)
+                .ThenInclude(s => s.Event)
             .Include(o => o.OrderItems)
                 .ThenInclude(oi => oi.Seat)
                     .ThenInclude(s => s.SeatCategory)
@@ -203,8 +242,11 @@ public sealed class OrderService(
         return order == null ? null : MapToDto(order, now);
     }
 
-    private static OrderDto MapToDto(Order order, DateTime now)
+    private static OrderDto MapToDto(Order order, DateTime now, Showtime? fallbackShowtime = null)
     {
+        var st = order.Showtime ?? fallbackShowtime;
+        var isExpired = order.Status == OrderStatus.Expired || (order.Status == OrderStatus.Pending && order.ExpiresAt <= now);
+        var status = isExpired ? OrderStatus.Expired.ToString() : order.Status.ToString();
         var remainingSeconds = Math.Max(0, (int)Math.Round((order.ExpiresAt - now).TotalSeconds));
         var items = order.OrderItems.Select(oi => new OrderItemDto(
             oi.Id,
@@ -219,12 +261,16 @@ public sealed class OrderService(
             order.Id,
             order.UserId,
             order.ShowtimeId,
-            order.Status.ToString(),
+            st?.Event?.Name,
+            st?.StartTime,
+            st?.EndTime,
+            status,
             order.TotalAmount,
             order.ExpiresAt,
             order.CreatedAt,
             now,
             remainingSeconds,
+            isExpired,
             items
         );
     }
