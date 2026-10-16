@@ -16,8 +16,7 @@ public class SeatCategoryPricingItemDto
         set => CategoryId = value;
     }
 
-    [Range(0, double.MaxValue, ErrorMessage = "Giá vé phải lớn hơn hoặc bằng 0.")]
-    public decimal Price { get; set; }
+    public decimal? Price { get; set; }
 }
 
 public class UpdateSeatPricingRequest
@@ -40,6 +39,6 @@ public class SeatCategoryPricingResponseDto
     public int Id { get; set; }
     public int ShowtimeId { get; set; }
     public string Name { get; set; } = string.Empty;
-    public decimal Price { get; set; }
+    public decimal? Price { get; set; }
     public int SeatCount { get; set; }
 }

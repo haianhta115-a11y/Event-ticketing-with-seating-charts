@@ -8,8 +8,9 @@ export function seatPresentation(seat, categoryColor, pending = false, focused =
   const selectable = available && seat.canSelect !== false || mine;
   const status = available ? (queued ? 'Trống, đã chọn chờ giữ' : 'Trống')
     : mine ? 'Bạn đang giữ' : other ? 'Người khác đang giữ' : sold ? 'Đã bán' : 'Không khả dụng';
+  const priceDisplay = existingPrice(seat?.price);
   return {
-    selectable, queued, status,
+    selectable, queued, status, priceDisplay, priceText: priceDisplay,
     icon: available ? '✓' : mine || other ? '⏳' : sold ? '✕' : '?',
     fill: available ? categoryColor : mine ? '#dbeafe' : other ? '#fef3c7' : '#e5e7eb',
     ink: available ? '#111827' : mine ? '#1e40af' : other ? '#92400e' : '#4b5563',

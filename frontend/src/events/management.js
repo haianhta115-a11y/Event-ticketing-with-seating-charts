@@ -74,5 +74,7 @@ export function managementApi(client) {
     async createShowtime(id, data) { return (await client.post(`/events/${id}/showtimes`, data)).data; },
     async getEventSeatPricing(id) { return (await client.get(`/events/${id}/pricing`)).data; },
     async updateEventSeatPricing(id, data) { return (await client.put(`/events/${id}/pricing`, data)).data; },
+    async getShowtimeSeatPricing(showtimeId) { return (await client.get(`/showtimes/${showtimeId}/pricing`)).data; },
+    async updateShowtimeSeatPricing(showtimeId, data) { return (await client.put(`/showtimes/${showtimeId}/pricing`, data)).data; },
   };
 }

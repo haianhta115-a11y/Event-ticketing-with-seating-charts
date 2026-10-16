@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -18,8 +18,7 @@ namespace EventTicketing.Api.Migrations
                 type: "numeric(18,2)",
                 precision: 18,
                 scale: 2,
-                nullable: false,
-                defaultValue: 0m);
+                nullable: true);
         }
 
         /// <inheritdoc />

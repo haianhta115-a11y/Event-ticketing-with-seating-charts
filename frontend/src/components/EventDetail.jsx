@@ -24,6 +24,7 @@ function EventDetailScreen({ id }) {
   const [showtimes, setShowtimes] = useState([]);
   const [loadingShowtimes, setLoadingShowtimes] = useState(true);
   const [showtimesError, setShowtimesError] = useState(null);
+  const [selectedPricingShowtimeId, setSelectedPricingShowtimeId] = useState(null);
 
   // SCRUM-86 & 87: Quản lý trạng thái Mở bán / Đóng bán
   const [actionError, setActionError] = useState(null);
@@ -143,7 +144,7 @@ function EventDetailScreen({ id }) {
     setShowtimesError(null);
     getShowtimes(id)
       .then((data) => {
-        setShowtimes(data);
+        setShowtimes(Array.isArray(data) ? data : []);
       })
       .catch((err) => {
         setShowtimesError(`Không tải được danh sách suất diễn: ${apiMessage(err)}`);
@@ -178,7 +179,7 @@ function EventDetailScreen({ id }) {
     getShowtimes(id)
       .then((data) => {
         if (!ignore) {
-          setShowtimes(data);
+          setShowtimes(Array.isArray(data) ? data : []);
         }
       })
       .catch((err) => {
@@ -257,8 +258,8 @@ function EventDetailScreen({ id }) {
   const isDraft = !event.status || event.status === EVENT_STATUS.DRAFT || event.status === 'Không xác định' || event.status === 0;
 
   // Sắp xếp suất diễn tăng dần theo thời gian bắt đầu
-  const sortedShowtimes = [...showtimes].sort(
-    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+  const sortedShowtimes = [...(Array.isArray(showtimes) ? showtimes : [])].sort(
+    (a, b) => new Date(a?.startTime || 0).getTime() - new Date(b?.startTime || 0).getTime()
   );
 
   return (
@@ -628,6 +629,26 @@ function EventDetailScreen({ id }) {
                       </label>
                     )}
 
+                    {/* Nút Thiết lập giá vé cho suất diễn */}
+                    {s.hasSeatMap && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPricingShowtimeId(s.id)}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          backgroundColor: selectedPricingShowtimeId === s.id ? '#9333ea' : '#7c3aed',
+                          color: '#ffffff',
+                          cursor: 'pointer',
+                          border: 'none',
+                        }}
+                      >
+                        Thiết lập giá vé
+                      </button>
+                    )}
+
                     {/* SCRUM-87: Nút Mở bán / Đóng bán */}
                     <button
                       onClick={() => handleToggleSales(s)}
@@ -666,7 +687,12 @@ function EventDetailScreen({ id }) {
         )}
 
         {/* Thiết lập giá vé theo hạng ghế (Task S-15) */}
-        <SeatPricingManager eventId={id} onPricingUpdated={() => {}} />
+        <SeatPricingManager
+          eventId={id}
+          showtimeId={selectedPricingShowtimeId}
+          showtimes={sortedShowtimes}
+          onPricingUpdated={fetchShowtimes}
+        />
 
         {/* Form thêm suất diễn */}
         <ShowtimeForm

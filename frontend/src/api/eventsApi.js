@@ -56,4 +56,6 @@ export const getOpenEvents = cursor => openEvents(axiosClient, cursor);
 
 export const getEventSeatPricing = (...args) => managementApi(axiosClient).getEventSeatPricing(...args);
 export const updateEventSeatPricing = (...args) => managementApi(axiosClient).updateEventSeatPricing(...args);
+export const getShowtimeSeatPricing = (...args) => managementApi(axiosClient).getShowtimeSeatPricing(...args);
+export const updateShowtimeSeatPricing = (...args) => managementApi(axiosClient).updateShowtimeSeatPricing(...args);
 

@@ -31,7 +31,7 @@ public sealed class ReleaseSeatResult
     };
 }
 
-public sealed record HeldSeatDto(int Id, string Row, string Number, int SeatCategoryId, DateTime HeldUntilUtc);
+public sealed record HeldSeatDto(int Id, string Row, string Number, int SeatCategoryId, DateTime HeldUntilUtc, decimal? Price = null);
 
 public sealed record SeatDisplayDto(
     int Id,
@@ -44,7 +44,8 @@ public sealed record SeatDisplayDto(
     string DisplayStatus,
     DateTime? HeldUntilUtc,
     bool CanSelect,
-    string? Category = null);
+    string? Category = null,
+    decimal? Price = null);
 
 public sealed record UserHoldSessionDto(
     int PerformanceId,

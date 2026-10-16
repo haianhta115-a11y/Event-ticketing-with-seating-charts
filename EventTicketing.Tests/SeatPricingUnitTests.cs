@@ -334,4 +334,158 @@ public sealed class SeatPricingUnitTests
         Assert.Single(request.Categories);
         Assert.Equal(42, request.Categories[0].CategoryId);
     }
+
+    [Fact]
+    public async Task UpdateEventPricing_NullPrice_ThrowsSeatPricingException()
+    {
+        var (db, _, service) = CreateTestHarness();
+        var user = CreateUser(201);
+
+        var request = new UpdateSeatPricingRequest
+        {
+            Categories = new List<SeatCategoryPricingItemDto>
+            {
+                new() { CategoryId = 1, Price = null }
+            }
+        };
+
+        var ex = await Assert.ThrowsAsync<SeatPricingException>(() =>
+            service.UpdateEventSeatPricingAsync(1, request, user));
+
+        Assert.Equal(400, ex.Status);
+        Assert.Equal("INVALID_PRICE", ex.Code);
+        Assert.Equal("Giá vé không được để trống.", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(100.5)]
+    [InlineData(0.99)]
+    [InlineData(250000.1)]
+    [InlineData(0.0001)]
+    public async Task UpdateEventPricing_FractionalPrice_ThrowsSeatPricingException(decimal fractionalPrice)
+    {
+        var (db, _, service) = CreateTestHarness();
+        var user = CreateUser(201);
+
+        var request = new UpdateSeatPricingRequest
+        {
+            Categories = new List<SeatCategoryPricingItemDto>
+            {
+                new() { CategoryId = 1, Price = fractionalPrice }
+            }
+        };
+
+        var ex = await Assert.ThrowsAsync<SeatPricingException>(() =>
+            service.UpdateEventSeatPricingAsync(1, request, user));
+
+        Assert.Equal(400, ex.Status);
+        Assert.Equal("INVALID_PRICE", ex.Code);
+        Assert.Equal("Giá vé phải là số nguyên (không có phần thập phân).", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(10_000_000_000_000_000)] // 10^16, overflows numeric(18,2)
+    [InlineData(99_999_999_999_999_999)]
+    public async Task UpdateEventPricing_OverflowPrice_ThrowsSeatPricingException(decimal overflowPrice)
+    {
+        var (db, _, service) = CreateTestHarness();
+        var user = CreateUser(201);
+
+        var request = new UpdateSeatPricingRequest
+        {
+            Categories = new List<SeatCategoryPricingItemDto>
+            {
+                new() { CategoryId = 1, Price = overflowPrice }
+            }
+        };
+
+        var ex = await Assert.ThrowsAsync<SeatPricingException>(() =>
+            service.UpdateEventSeatPricingAsync(1, request, user));
+
+        Assert.Equal(400, ex.Status);
+        Assert.Equal("INVALID_PRICE", ex.Code);
+        Assert.Equal("Giá vé vượt quá giới hạn cho phép.", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateShowtimePricing_NullOrFractionalOrOverflow_ThrowsSeatPricingException()
+    {
+        var (db, _, service) = CreateTestHarness();
+        var user = CreateUser(201);
+
+        var nullRequest = new UpdateSeatPricingRequest
+        {
+            Categories = [new() { CategoryId = 1, Price = null }]
+        };
+        var exNull = await Assert.ThrowsAsync<SeatPricingException>(() =>
+            service.UpdateShowtimeSeatPricingAsync(10, nullRequest, user));
+        Assert.Equal(400, exNull.Status);
+        Assert.Equal("INVALID_PRICE", exNull.Code);
+
+        var fracRequest = new UpdateSeatPricingRequest
+        {
+            Categories = [new() { CategoryId = 1, Price = 50.5m }]
+        };
+        var exFrac = await Assert.ThrowsAsync<SeatPricingException>(() =>
+            service.UpdateShowtimeSeatPricingAsync(10, fracRequest, user));
+        Assert.Equal(400, exFrac.Status);
+        Assert.Equal("INVALID_PRICE", exFrac.Code);
+
+        var overRequest = new UpdateSeatPricingRequest
+        {
+            Categories = [new() { CategoryId = 1, Price = 10_000_000_000_000_000m }]
+        };
+        var exOver = await Assert.ThrowsAsync<SeatPricingException>(() =>
+            service.UpdateShowtimeSeatPricingAsync(10, overRequest, user));
+        Assert.Equal(400, exOver.Status);
+        Assert.Equal("INVALID_PRICE", exOver.Code);
+    }
+
+    [Fact]
+    public async Task GetEventPricing_UnsetPrice_ReturnsNullPrice()
+    {
+        var (db, authMock, service) = CreateTestHarness();
+        var user = CreateUser(201);
+
+        var evt = new Event { Id = 1, Name = "Test Event", Description = "Desc", Location = "Loc", OwnerUserId = 201 };
+        var showtime = new Showtime { Id = 10, EventId = 1, StartTime = DateTime.UtcNow.AddDays(1) };
+        var cat = new SeatCategory { Id = 1, ShowtimeId = 10, Name = "VIP", NormalizedName = "VIP" }; // Price unset (null)
+
+        db.Events.Add(evt);
+        db.Showtimes.Add(showtime);
+        db.SeatCategories.Add(cat);
+        await db.SaveChangesAsync();
+
+        authMock.Setup(a => a.AuthorizeAsync(user, evt, AccessPolicies.EventOwner))
+            .ReturnsAsync(AuthorizationResult.Success());
+
+        var result = await service.GetEventSeatPricingAsync(1, user);
+
+        Assert.Single(result);
+        Assert.Null(result[0].Price);
+    }
+
+    [Fact]
+    public async Task GetShowtimePricing_UnsetPrice_ReturnsNullPrice()
+    {
+        var (db, authMock, service) = CreateTestHarness();
+        var user = CreateUser(201);
+
+        var evt = new Event { Id = 1, Name = "Test Event", Description = "Desc", Location = "Loc", OwnerUserId = 201 };
+        var showtime = new Showtime { Id = 10, EventId = 1, StartTime = DateTime.UtcNow.AddDays(1) };
+        var cat = new SeatCategory { Id = 1, ShowtimeId = 10, Name = "VIP", NormalizedName = "VIP" }; // Price unset (null)
+
+        db.Events.Add(evt);
+        db.Showtimes.Add(showtime);
+        db.SeatCategories.Add(cat);
+        await db.SaveChangesAsync();
+
+        authMock.Setup(a => a.AuthorizeAsync(user, It.IsAny<Event>(), AccessPolicies.EventOwner))
+            .ReturnsAsync(AuthorizationResult.Success());
+
+        var result = await service.GetShowtimeSeatPricingAsync(10, user);
+
+        Assert.Single(result);
+        Assert.Null(result[0].Price);
+    }
 }
