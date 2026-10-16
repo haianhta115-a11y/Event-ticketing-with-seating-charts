@@ -40,7 +40,9 @@ export default function SeatPricingManager({
 
   useEffect(() => {
     if (propShowtimeId) {
-      setSelectedShowtimeId(String(propShowtimeId));
+      setTimeout(() => {
+        setSelectedShowtimeId(String(propShowtimeId));
+      }, 0);
     }
   }, [propShowtimeId]);
 
@@ -81,12 +83,16 @@ export default function SeatPricingManager({
     let ignore = false;
     const targetShowtimeId = propShowtimeId || (selectedShowtimeId ? Number(selectedShowtimeId) : null);
     if (!targetShowtimeId && !eventId) {
-      setLoading(false);
+      setTimeout(() => {
+        setLoading(false);
+      }, 0);
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    setTimeout(() => {
+      setLoading(true);
+      setError(null);
+    }, 0);
 
     const promise = targetShowtimeId
       ? getShowtimeSeatPricing(targetShowtimeId)
@@ -155,7 +161,7 @@ export default function SeatPricingManager({
         setError('Giá vé phải là số nguyên (không có phần thập phân).');
         return;
       }
-      if (num > 9999999999999999) {
+      if (num > 20000) {
         setError('Giá vé vượt quá giới hạn cho phép.');
         return;
       }
