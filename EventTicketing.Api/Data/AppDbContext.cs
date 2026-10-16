@@ -181,6 +181,11 @@ public class AppDbContext : DbContext
             entity.Property(e => e.ExpiresAt).HasColumnName("expires_at").HasColumnType("timestamp with time zone");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp with time zone");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp with time zone");
+            entity.Property(e => e.PaidAt).HasColumnName("paid_at").HasColumnType("timestamp with time zone");
+            entity.Property(e => e.PaymentReference).HasColumnName("payment_reference").HasMaxLength(255);
+            entity.Property(e => e.PaidAmount).HasColumnName("paid_amount").HasPrecision(18, 2);
+            entity.Property(e => e.RequiresPaymentReview).HasColumnName("requires_payment_review").HasDefaultValue(false);
+            entity.Property(e => e.PaymentReviewReason).HasColumnName("payment_review_reason");
 
             entity.Property(e => e.Status)
                 .HasColumnName("status")

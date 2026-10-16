@@ -10,6 +10,11 @@ public class Order
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public DateTime? PaidAt { get; set; }
+    public string? PaymentReference { get; set; }
+    public decimal? PaidAmount { get; set; }
+    public bool RequiresPaymentReview { get; set; } = false;
+    public string? PaymentReviewReason { get; set; }
 
     public User User { get; set; } = null!;
     public Showtime Showtime { get; set; } = null!;

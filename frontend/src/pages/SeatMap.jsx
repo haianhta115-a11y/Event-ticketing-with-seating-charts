@@ -6,6 +6,7 @@ import { seatClick } from '../events/seatClick';
 import { seatMapGeometry, computeFitScale, initialSeatScale, maximumSeatScale, zoomAtPoint } from '../events/seatMapGeometry';
 import { categoryPalette } from '../events/seatImport';
 import { seatPresentation, rowLabels, existingPrice, blockedSeatMessage } from '../events/seatPresentation';
+import { payOrder, createOrderForShowtime } from '../api/paymentApi.js';
 
 /**
  * Tối ưu hóa từng ghế bằng React.memo để tránh render lại toàn bộ hàng nghìn ghế.
@@ -153,6 +154,38 @@ function SeatMapScreen({ id }) {
       toggle: picked => setBatchIds(ids => toggleBatch(ids, picked)) });
   }, [batchMode, isHolding, dismissNotice, setSelectedSeat, confirmHold, confirmRelease]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
+  const [paymentError, setPaymentError] = useState(null);
+
+  const handlePay = async () => {
+    try {
+      setIsPaying(true);
+      setPaymentError(null);
+      const orderRes = await createOrderForShowtime(id);
+      const orderId = orderRes.order?.id;
+      if (!orderId) {
+        throw new Error('Không lấy được thông tin đơn hàng.');
+      }
+      const payRes = await payOrder(orderId);
+      if (payRes.redirectUrl) {
+        window.location.href = payRes.redirectUrl;
+      }
+    } catch (err) {
+      const code = err.response?.data?.errorCode;
+      if (code === 'ORDER_EXPIRED') {
+        setPaymentError('Đơn hàng đã hết hạn thanh toán.');
+      } else if (code === 'ORDER_NOT_PAYABLE') {
+        setPaymentError('Đơn hàng không ở trạng thái có thể thanh toán.');
+      } else if (code === 'SEAT_HOLD_EXPIRED') {
+        setPaymentError('Một hoặc nhiều ghế đã hết hạn giữ chỗ.');
+      } else {
+        setPaymentError(err.response?.data?.message || 'Có lỗi xảy ra khi thực hiện thanh toán.');
+      }
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
   const countdown = `${Math.floor(remainingSeconds / 60).toString().padStart(2, '0')}:${(remainingSeconds % 60).toString().padStart(2, '0')}`;
   const handleConfirmHold = async () => {
     if (selectedSeat?.displayStatus === 'Available') await confirmHold(selectedSeat.id);
@@ -892,11 +925,34 @@ function SeatMapScreen({ id }) {
           Bạn đang giữ {session.heldSeats.length} ghế. Thời gian còn lại: {countdown}
           <span> — {session.heldSeats.map(s => `Hàng ${s.row}, ghế ${s.number}`).join('; ')}</span>
           <div aria-label="Nhả ghế đang giữ">
-            {session.heldSeats.map(seat => <button key={seat.id} type="button" disabled={isHolding}
+            {session.heldSeats.map(seat => <button key={seat.id} type="button" disabled={isHolding || isPaying}
               aria-label={`Nhả ghế ${seat.id}`} onClick={() => confirmRelease(seat.id)}>
               Nhả hàng {seat.row}, ghế {seat.number}
             </button>)}
           </div>
+          <div style={{ marginTop: '8px' }}>
+            <button
+              type="button"
+              disabled={isHolding || isPaying}
+              onClick={handlePay}
+              style={{
+                padding: '6px 16px',
+                backgroundColor: '#10b981',
+                color: '#fff',
+                fontWeight: 'bold',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: (isHolding || isPaying) ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {isPaying ? 'Đang chuyển sang cổng thanh toán...' : 'Thanh toán'}
+            </button>
+          </div>
+          {paymentError && (
+            <p role="alert" style={{ color: '#ef4444', marginTop: '6px', fontWeight: 'bold' }}>
+              {paymentError}
+            </p>
+          )}
         </div>
       )}
       {/* Tiêu đề trang & Chế độ xem */}
@@ -1326,6 +1382,7 @@ onClick={() => { dismissNotice(); setSelectedSeat(null); }}
               <button
                 onClick={() => setIsPaymentModalOpen(false)}
                 className="text-gray-400 hover:text-white transition duration-200"
+                disabled={isPaying}
               >
                 ✕
               </button>
@@ -1333,7 +1390,6 @@ onClick={() => { dismissNotice(); setSelectedSeat(null); }}
             <div className="text-gray-300 mb-6">
               <p>Ghế đã chọn: Khu {selectedSeat?.section} - Hàng {selectedSeat?.row} - Số {selectedSeat?.number}</p>
               <p>Giá: {existingPrice(selectedSeat?.price) !== null ? existingPrice(selectedSeat.price) : 'Chưa có giá'}</p>
-              <p className="mt-4 italic text-sm text-gray-500">Tính năng thanh toán đang được phát triển...</p>
               {selectedSeat?.heldUntilUtc && (() => {
                   const remaining = remainingSeconds;
 
@@ -1353,13 +1409,26 @@ onClick={() => { dismissNotice(); setSelectedSeat(null); }}
                       );
                   }
               })()}
+              {paymentError && (
+                <div role="alert" className="mt-4 p-3 bg-red-900 bg-opacity-30 border border-red-700 rounded text-red-400 font-bold text-center">
+                  {paymentError}
+                </div>
+              )}
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-3">
               <button
                 onClick={() => setIsPaymentModalOpen(false)}
                 className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded transition duration-200"
+                disabled={isPaying}
               >
                 Đóng
+              </button>
+              <button
+                onClick={handlePay}
+                disabled={isPaying || isHolding}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-6 rounded transition duration-200 cursor-pointer disabled:opacity-50"
+              >
+                {isPaying ? 'Đang chuyển hướng...' : 'Thanh toán ngay'}
               </button>
             </div>
           </div>
