@@ -11,13 +11,16 @@ export default function OrderDetail() {
     const [ticketUrl, setTicketUrl] = useState('');
 
     const pollingRef = useRef(null);
-    const startTimeRef = useRef(Date.now());
+    const startTimeRef = useRef(null);
 
     useEffect(() => {
         if (!orderId) return;
 
+        if (!startTimeRef.current) {
+            startTimeRef.current = Date.now();
+        }
+
         const checkServerStatus = async () => {
-            // 1. Batas waktu 60 detik (Timeout)
             const secondsPassed = (Date.now() - startTimeRef.current) / 1000;
             if (secondsPassed >= 60) {
                 if (pollingRef.current) clearInterval(pollingRef.current);
@@ -25,6 +28,7 @@ export default function OrderDetail() {
                 setStatusMessage('Chưa có xác nhận sau 60 giây. Vui lòng kiểm tra lại trong lịch sử đơn thay vì kết luận thất bại.');
                 return;
             }
+    // ... sisa kode lainnya tetap sama
 
             try {
                 // 2. Selalu panggil server langsung (tidak mempercayai URL parameter)
