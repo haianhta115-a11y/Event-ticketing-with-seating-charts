@@ -12,4 +12,8 @@ public interface IPaymentService
     Task<ConfirmPaymentResult> ConfirmPaymentAsync(
         PaymentResultRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<ProcessWebhookResult> ProcessWebhookAsync(
+        WebhookPaymentRequest request,
+        CancellationToken cancellationToken = default);
 }

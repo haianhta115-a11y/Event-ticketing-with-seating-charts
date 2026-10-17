@@ -92,7 +92,7 @@ public sealed class PaymentsController(
     }
 
     /// <summary>
-    /// S-19 / SCRUM-35: Webhook cho cổng thanh toán giả lập có kiểm tra chữ ký hợp lệ
+    /// S-19 / SCRUM-35 & S-20 / SCRUM-36: Webhook cho cổng thanh toán có kiểm tra chữ ký và chống xử lý trùng lặp (Idempotent)
     /// </summary>
     [HttpPost("payments/mock/webhook")]
     [HttpPost("payments/webhook")]
@@ -115,11 +115,17 @@ public sealed class PaymentsController(
             });
         }
 
-        var result = await paymentService.ConfirmPaymentAsync(
-            new PaymentResultRequest(request.OrderId, request.TransactionId, request.Amount, request.Success),
-            ct);
+        var webhookRequest = new WebhookPaymentRequest(
+            OrderId: request.OrderId,
+            TransactionId: request.TransactionId ?? string.Empty,
+            Amount: request.Amount,
+            Success: request.Success,
+            RawPayload: payload,
+            Signature: signature);
 
-        if (result.Outcome == ConfirmPaymentOutcome.OrderNotFound)
+        var result = await paymentService.ProcessWebhookAsync(webhookRequest, ct);
+
+        if (result.Outcome == ProcessWebhookOutcome.OrderNotFound)
         {
             return NotFound(new
             {
@@ -129,12 +135,24 @@ public sealed class PaymentsController(
             });
         }
 
-        var isSuccess = result.Outcome is ConfirmPaymentOutcome.Paid or ConfirmPaymentOutcome.AlreadyPaid;
+        if (result.Outcome == ProcessWebhookOutcome.InvalidData)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                outcome = result.Outcome.ToString(),
+                message = result.Message
+            });
+        }
 
+        // Bỏ qua mã đã có, trả 200 OK cho webhook trùng để cổng ngừng gửi lại; không có lỗi 500
         return Ok(new
         {
-            success = isSuccess,
-            outcome = result.Outcome.ToString(),
+            success = result.Success,
+            isDuplicate = result.IsDuplicate,
+            outcome = result.Outcome == ProcessWebhookOutcome.DuplicateIgnored
+                ? "DuplicateIgnored"
+                : result.PaymentResult?.Outcome.ToString(),
             message = result.Message
         });
     }

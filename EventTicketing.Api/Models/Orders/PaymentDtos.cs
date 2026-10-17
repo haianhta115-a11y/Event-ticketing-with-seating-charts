@@ -55,3 +55,26 @@ public enum ConfirmPaymentOutcome
 public sealed record ConfirmPaymentResult(
     ConfirmPaymentOutcome Outcome,
     string? Message = null);
+
+public sealed record WebhookPaymentRequest(
+    int OrderId,
+    string TransactionId,
+    decimal Amount,
+    bool Success,
+    string? RawPayload = null,
+    string? Signature = null);
+
+public enum ProcessWebhookOutcome
+{
+    Processed,
+    DuplicateIgnored,
+    OrderNotFound,
+    InvalidData
+}
+
+public sealed record ProcessWebhookResult(
+    bool Success,
+    bool IsDuplicate,
+    ProcessWebhookOutcome Outcome,
+    ConfirmPaymentResult? PaymentResult = null,
+    string? Message = null);

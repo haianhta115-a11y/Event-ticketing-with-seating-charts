@@ -69,8 +69,124 @@ public sealed class PaymentService(
         PaymentResultRequest request,
         CancellationToken cancellationToken = default)
     {
+        var sampledNow = await clock.NowAsync(db, cancellationToken);
+        var now = new DateTime(sampledNow.Ticks - sampledNow.Ticks % 10, DateTimeKind.Utc);
+        return await ConfirmPaymentInternalAsync(request, null, now, cancellationToken);
+    }
+
+    public async Task<ProcessWebhookResult> ProcessWebhookAsync(
+        WebhookPaymentRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.TransactionId))
+        {
+            return new ProcessWebhookResult(
+                Success: false,
+                IsDuplicate: false,
+                Outcome: ProcessWebhookOutcome.InvalidData,
+                Message: "Mã giao dịch không hợp lệ.");
+        }
+
+        var sampledNow = await clock.NowAsync(db, cancellationToken);
+        var now = new DateTime(sampledNow.Ticks - sampledNow.Ticks % 10, DateTimeKind.Utc);
+
+        // 1. Kiểm tra nhanh mã giao dịch đã được ghi nhận trước đó hay chưa
+        var existingEvent = await db.PaymentEvents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(pe => pe.TransactionId == request.TransactionId, cancellationToken);
+
+        if (existingEvent != null)
+        {
+            logger?.LogInformation("Webhook with TransactionId {TransactionId} has already been processed. Returning 200 OK (idempotent ignore).", request.TransactionId);
+            return new ProcessWebhookResult(
+                Success: true,
+                IsDuplicate: true,
+                Outcome: ProcessWebhookOutcome.DuplicateIgnored,
+                Message: "Webhook đã được xử lý trước đó. Bỏ qua yêu cầu trùng lặp.");
+        }
+
+        // 2. Mở giao dịch
         var isRelational = db.Database.IsRelational();
         await using var transaction = isRelational
+            ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        var rawPayload = request.RawPayload ?? $"{request.OrderId}|{request.Amount.ToString(CultureInfo.InvariantCulture)}|{request.TransactionId}|{request.Success.ToString().ToLowerInvariant()}";
+
+        var paymentEvent = new PaymentEvent
+        {
+            TransactionId = request.TransactionId,
+            OrderId = request.OrderId,
+            Amount = request.Amount,
+            Success = request.Success,
+            RawPayload = rawPayload,
+            CreatedAt = now
+        };
+
+        db.PaymentEvents.Add(paymentEvent);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            // Trùng mã giao dịch do request đồng thời khác đã commit trước
+            if (transaction != null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+            logger?.LogWarning(ex, "Duplicate webhook detected by unique constraint for TransactionId {TransactionId}. Returning 200 OK without 500 error.", request.TransactionId);
+            return new ProcessWebhookResult(
+                Success: true,
+                IsDuplicate: true,
+                Outcome: ProcessWebhookOutcome.DuplicateIgnored,
+                Message: "Webhook trùng lặp đã được tiếp nhận bởi tiến trình khác. Bỏ qua.");
+        }
+
+        // 3. Chèn thành công thì gọi T-42 trong cùng giao dịch
+        var confirmResult = await ConfirmPaymentInternalAsync(
+            new PaymentResultRequest(request.OrderId, request.TransactionId, request.Amount, request.Success),
+            transaction,
+            now,
+            cancellationToken);
+
+        if (transaction != null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        if (confirmResult.Outcome == ConfirmPaymentOutcome.OrderNotFound)
+        {
+            return new ProcessWebhookResult(
+                Success: false,
+                IsDuplicate: false,
+                Outcome: ProcessWebhookOutcome.OrderNotFound,
+                PaymentResult: confirmResult,
+                Message: confirmResult.Message);
+        }
+
+        var isSuccess = confirmResult.Outcome is ConfirmPaymentOutcome.Paid
+            or ConfirmPaymentOutcome.AlreadyPaid
+            or ConfirmPaymentOutcome.NeedsReview;
+
+        return new ProcessWebhookResult(
+            Success: isSuccess,
+            IsDuplicate: false,
+            Outcome: ProcessWebhookOutcome.Processed,
+            PaymentResult: confirmResult,
+            Message: confirmResult.Message);
+    }
+
+    private async Task<ConfirmPaymentResult> ConfirmPaymentInternalAsync(
+        PaymentResultRequest request,
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? existingTransaction,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var isRelational = db.Database.IsRelational();
+        var shouldManageTransaction = isRelational && existingTransaction == null && db.Database.CurrentTransaction == null;
+        await using var transaction = shouldManageTransaction
             ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
             : null;
 
@@ -80,10 +196,8 @@ public sealed class PaymentService(
                 $"SELECT pg_advisory_xact_lock({PaymentLockCategory}, {request.OrderId})", cancellationToken);
         }
 
-        var sampledNow = await clock.NowAsync(db, cancellationToken);
-        var now = new DateTime(sampledNow.Ticks - sampledNow.Ticks % 10, DateTimeKind.Utc);
-
         var order = await db.Orders
+            .IgnoreQueryFilters()
             .Include(o => o.OrderItems)
                 .ThenInclude(oi => oi.Seat)
             .FirstOrDefaultAsync(o => o.Id == request.OrderId, cancellationToken);
@@ -138,16 +252,31 @@ public sealed class PaymentService(
             return new ConfirmPaymentResult(ConfirmPaymentOutcome.AmountMismatch, "Số tiền thanh toán không khớp với tổng đơn.");
         }
 
-        // 5. Đơn không Pending hoặc có ghế không còn Held bởi đúng user -> đánh dấu review, log Error, trả NeedsReview
+        // 5. Đơn không Pending, hết hạn/huỷ, hoặc có ghế không còn Held bởi đúng user -> đánh dấu review, log Error, trả NeedsReview
+        var isExpired = order.Status == OrderStatus.Expired ||
+                        order.Status == OrderStatus.Cancelled ||
+                        (order.Status == OrderStatus.Pending && order.ExpiresAt <= now);
+
         var invalidSeat = order.OrderItems.Any(oi =>
             oi.Seat == null ||
             oi.Seat.Status != SeatStatus.Held ||
             oi.Seat.HeldByUserId != order.UserId);
 
-        if (order.Status != OrderStatus.Pending || invalidSeat)
+        if (isExpired || order.Status != OrderStatus.Pending || invalidSeat)
         {
             order.RequiresPaymentReview = true;
-            order.PaymentReviewReason = "Đơn hàng không ở trạng thái Pending hoặc ghế không còn được giữ bởi người dùng.";
+            if (isExpired)
+            {
+                order.PaymentReviewReason = "Đơn hàng đã bị huỷ hoặc hết hạn thanh toán. Cần kiểm tra để hoàn tiền.";
+                if (order.Status == OrderStatus.Pending)
+                {
+                    order.Status = OrderStatus.Expired;
+                }
+            }
+            else
+            {
+                order.PaymentReviewReason = "Đơn hàng không ở trạng thái Pending hoặc ghế không còn được giữ bởi người dùng.";
+            }
             order.PaidAmount = request.Amount;
             order.PaymentReference = request.TransactionId;
             order.UpdatedAt = now;
@@ -158,10 +287,10 @@ public sealed class PaymentService(
                 await transaction.CommitAsync(cancellationToken);
             }
 
-            logger?.LogError("Payment requires review for order {OrderId}: status is {Status}, seats invalid or not held by user {UserId}. Transaction {TransactionId}",
-                order.Id, order.Status, order.UserId, request.TransactionId);
+            logger?.LogError("Payment requires review for order {OrderId}: status is {Status}, isExpired: {IsExpired}. Transaction {TransactionId}",
+                order.Id, order.Status, isExpired, request.TransactionId);
 
-            return new ConfirmPaymentResult(ConfirmPaymentOutcome.NeedsReview, "Đơn hàng cần kiểm tra do trạng thái ghế hoặc đơn không hợp lệ.");
+            return new ConfirmPaymentResult(ConfirmPaymentOutcome.NeedsReview, "Đơn hàng cần kiểm tra do đã hết hạn hoặc trạng thái ghế không hợp lệ.");
         }
 
         // 6. Hợp lệ -> Order.Status=Paid, PaidAt, PaidAmount, PaymentReference; OrderItem.Status=Paid; Seat.Status=Sold, HeldByUserId=null, HeldUntil=null
