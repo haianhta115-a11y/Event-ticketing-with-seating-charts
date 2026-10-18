@@ -351,7 +351,7 @@ public sealed class PaymentServiceTests
         var mockEnv = new Mock<IWebHostEnvironment>();
         var mockConfig = new Mock<IConfiguration>();
 
-        var controller = new PaymentsController(mockService.Object, mockEnv.Object, mockConfig.Object)
+        var controller = new PaymentsController(mockService.Object, mockEnv.Object, mockConfig.Object, new Mock<ILogger<PaymentsController>>().Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -382,7 +382,7 @@ public sealed class PaymentServiceTests
         var mockEnv = new Mock<IWebHostEnvironment>();
         var mockConfig = new Mock<IConfiguration>();
 
-        var controller = new PaymentsController(mockService.Object, mockEnv.Object, mockConfig.Object)
+        var controller = new PaymentsController(mockService.Object, mockEnv.Object, mockConfig.Object, new Mock<ILogger<PaymentsController>>().Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -411,7 +411,7 @@ public sealed class PaymentServiceTests
         var mockConfig = new Mock<IConfiguration>();
         mockConfig.Setup(c => c.GetSection(It.IsAny<string>())).Returns(new Mock<IConfigurationSection>().Object);
 
-        var controller = new PaymentsController(mockService.Object, mockEnv.Object, mockConfig.Object);
+        var controller = new PaymentsController(mockService.Object, mockEnv.Object, mockConfig.Object, new Mock<ILogger<PaymentsController>>().Object);
         var request = new PaymentResultRequest(1, "TXN-PROD", 100000m, true);
 
         var response = await controller.HandleSandboxPaymentResult(request, CancellationToken.None);
@@ -430,7 +430,7 @@ public sealed class PaymentServiceTests
         mockEnv.Setup(e => e.EnvironmentName).Returns("Development");
         var mockConfig = new Mock<IConfiguration>();
 
-        var controller = new PaymentsController(mockService.Object, mockEnv.Object, mockConfig.Object);
+        var controller = new PaymentsController(mockService.Object, mockEnv.Object, mockConfig.Object, new Mock<ILogger<PaymentsController>>().Object);
         var request = new PaymentResultRequest(1, "TXN-DEV", 100000m, true);
 
         var response = await controller.HandleSandboxPaymentResult(request, CancellationToken.None);
