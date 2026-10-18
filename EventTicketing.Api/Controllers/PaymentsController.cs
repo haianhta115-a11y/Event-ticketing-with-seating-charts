@@ -19,16 +19,7 @@ public sealed class PaymentsController(
 {
     private readonly IPaymentGateway _gateway = paymentGateway ?? new MockPaymentGateway();
 
-    public PaymentsController(
-        IPaymentService paymentService,
-        IWebHostEnvironment environment,
-        IConfiguration configuration,
-        IPaymentGateway? paymentGateway)
-        : this(paymentService, environment, configuration, null, paymentGateway)
-    {
-    }
-
-    [HttpPost("orders/{id:int}/pay")]
+       [HttpPost("orders/{id:int}/pay")]
     [Authorize(Policy = AccessPolicies.SeatBooking)]
     public async Task<IActionResult> PayOrder(int id, CancellationToken ct)
     {

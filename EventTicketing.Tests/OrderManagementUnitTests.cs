@@ -454,4 +454,82 @@ public sealed class OrderManagementUnitTests
         var objectResult = Assert.IsType<ObjectResult>(response);
         Assert.Equal(StatusCodes.Status409Conflict, objectResult.StatusCode);
     }
+
+    [Fact]
+    public async Task GetOrderByIdAsync_WithFailedPaymentEvent_ReturnsHasFailedPaymentsTrue()
+    {
+        var (db, _, service, now) = CreateTestHarness();
+        const int userId = 42;
+        const int orderId = 1;
+
+        var order = new Order
+        {
+            Id = orderId,
+            UserId = userId,
+            ShowtimeId = 10,
+            Status = OrderStatus.Pending,
+            TotalAmount = 250000m,
+            ExpiresAt = now.AddMinutes(15),
+            CreatedAt = now
+        };
+
+        var failedEvent = new PaymentEvent
+        {
+            TransactionId = "TXN-FAIL-001",
+            OrderId = orderId,
+            Amount = 250000m,
+            Success = false,
+            RawPayload = "1|250000|TXN-FAIL-001|false",
+            CreatedAt = now
+        };
+
+        db.Orders.Add(order);
+        db.PaymentEvents.Add(failedEvent);
+        await db.SaveChangesAsync();
+
+        var result = await service.GetOrderByIdAsync(orderId, userId);
+
+        Assert.NotNull(result);
+        Assert.True(result.HasFailedPayments);
+        Assert.True(result.HasFailedPayment);
+    }
+
+    [Fact]
+    public async Task GetOrderByIdAsync_WithoutFailedPaymentEvent_ReturnsHasFailedPaymentsFalse()
+    {
+        var (db, _, service, now) = CreateTestHarness();
+        const int userId = 42;
+        const int orderId = 2;
+
+        var order = new Order
+        {
+            Id = orderId,
+            UserId = userId,
+            ShowtimeId = 10,
+            Status = OrderStatus.Pending,
+            TotalAmount = 250000m,
+            ExpiresAt = now.AddMinutes(15),
+            CreatedAt = now
+        };
+
+        var successEvent = new PaymentEvent
+        {
+            TransactionId = "TXN-OK-001",
+            OrderId = orderId,
+            Amount = 250000m,
+            Success = true,
+            RawPayload = "2|250000|TXN-OK-001|true",
+            CreatedAt = now
+        };
+
+        db.Orders.Add(order);
+        db.PaymentEvents.Add(successEvent);
+        await db.SaveChangesAsync();
+
+        var result = await service.GetOrderByIdAsync(orderId, userId);
+
+        Assert.NotNull(result);
+        Assert.False(result.HasFailedPayments);
+        Assert.False(result.HasFailedPayment);
+    }
 }

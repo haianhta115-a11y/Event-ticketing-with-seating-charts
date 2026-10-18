@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getOrderById, payOrder } from '../api/paymentApi.js';
+import {
+  isPendingOrderStatus,
+  hasFailedPaymentAttempt,
+  shouldShowRetryPayment,
+} from './orderPaymentRetry.js';
 
 export default function OrderDetail() {
   const { id } = useParams();
@@ -22,7 +27,7 @@ export default function OrderDetail() {
         }
         const data = await getOrderById(orderId);
         if (active) {
-          setOrder(data);
+          setOrder(data?.order || data);
         }
       } catch (err) {
         if (active) {
@@ -82,8 +87,18 @@ export default function OrderDetail() {
     );
   }
 
+  const orderData = order?.order || order;
+  const isPending = isPendingOrderStatus(orderData?.status);
+  const hasFailedHistory = Boolean(
+    orderData?.hasFailedPayments ||
+    orderData?.hasFailedPayment ||
+    orderData?.hasFailedPaymentHistory ||
+    hasFailedPaymentAttempt(orderData)
+  );
+  const showRetryButton = isPending && hasFailedHistory;
+
   return (
-    <div style={{ maxWidth: '700px', margin: '40px auto', padding: '24px', backgroundColor: 'var(--card-bg, #1e293b)', borderRadius: '8px', color: '#fff' }}>
+    <div style={{ maxWidth: '700px', margin: '40px auto', padding: '24px', backgroundColor: 'var(--card-bg, #1e293b)', borderRadius: '12px', color: '#fff' }}>
       <button
         onClick={() => navigate(-1)}
         style={{ marginBottom: '16px', padding: '6px 12px', cursor: 'pointer', background: 'transparent', border: '1px solid #475569', color: '#cbd5e1', borderRadius: '4px' }}
@@ -92,7 +107,20 @@ export default function OrderDetail() {
       </button>
 
       <h2>Chi Tiết Đơn Hàng #{order.id}</h2>
-      <div style={{ marginTop: '16px', lineHeight: '1.8' }}>
+
+      {/* Order Summary Section */}
+      <div
+        className="order-summary"
+        data-testid="order-summary"
+        style={{
+          marginTop: '16px',
+          padding: '20px',
+          backgroundColor: 'rgba(15, 23, 42, 0.6)',
+          borderRadius: '10px',
+          border: '1px solid #334155',
+          lineHeight: '1.8',
+        }}
+      >
         <p><strong>Mã đơn hàng:</strong> ORD-{order.id}</p>
         <p>
           <strong>Trạng thái:</strong>{' '}
@@ -107,7 +135,118 @@ export default function OrderDetail() {
           </span>
         </p>
         <p><strong>Tổng tiền:</strong> {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.totalAmount)}</p>
-        <p><strong>Thời hạn thanh toán:</strong> {new Date(order.expiresAtUtc).toLocaleString('vi-VN')}</p>
+        <p><strong>Thời hạn thanh toán:</strong> {order.expiresAtUtc ? new Date(order.expiresAtUtc).toLocaleString('vi-VN') : ''}</p>
+
+        {/* Failed payment attempt notice */}
+        {showRetryButton && (
+          <div
+            role="status"
+            className="mt-4 p-3.5 bg-amber-950/40 border border-amber-600/40 text-amber-200 text-sm rounded-xl flex items-center gap-3"
+            style={{
+              marginTop: '14px',
+              padding: '10px 14px',
+              backgroundColor: 'rgba(120, 53, 15, 0.3)',
+              border: '1px solid rgba(217, 119, 6, 0.4)',
+              borderRadius: '8px',
+              color: '#fde68a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <svg
+              className="w-5 h-5 flex-shrink-0 text-amber-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+              style={{ width: '20px', height: '20px', flexShrink: 0 }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>Thanh toán trước đó chưa hoàn tất hoặc thất bại. Bạn có thể nhấn <strong>Thanh toán lại</strong> bên dưới.</span>
+          </div>
+        )}
+
+        {/* Prominently placed action button inside Order Summary */}
+        {isPending && (
+          <div
+            className="mt-5 pt-4 border-t border-slate-700/60 flex justify-center"
+            style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid #334155', textAlign: 'center' }}
+          >
+            {showRetryButton ? (
+              <button
+                type="button"
+                onClick={handlePay}
+                disabled={isPaying}
+                aria-label="Thanh toán lại"
+                data-testid="retry-payment-button"
+                className="group relative inline-flex items-center justify-center gap-3 px-8 py-3.5 text-base sm:text-lg font-semibold text-white bg-gradient-to-r from-amber-500 via-orange-600 to-rose-600 hover:from-amber-400 hover:via-orange-500 hover:to-rose-500 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all transition-transform duration-300 ease-out cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                  padding: '14px 32px',
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 50%, #e11d48 100%)',
+                  color: '#ffffff',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  border: 'none',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 25px -5px rgba(234, 88, 12, 0.4), 0 8px 10px -6px rgba(234, 88, 12, 0.3)',
+                  cursor: isPaying ? 'not-allowed' : 'pointer',
+                  opacity: isPaying ? 0.6 : 1,
+                  transition: 'all 0.3s ease',
+                }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className={`w-5 h-5 text-white transition-transform duration-500 ${isPaying ? 'animate-spin' : 'group-hover:rotate-180'}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  aria-hidden="true"
+                  style={{ width: '20px', height: '20px' }}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <span>{isPaying ? 'Đang chuyển hướng sang cổng thanh toán...' : 'Thanh toán lại'}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handlePay}
+                disabled={isPaying}
+                aria-label="Thanh toán"
+                className="group relative inline-flex items-center justify-center gap-2.5 px-8 py-3 text-base font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all transition-transform duration-300 ease-out cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '12px 32px',
+                  backgroundColor: '#10b981',
+                  color: '#fff',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: isPaying ? 'not-allowed' : 'pointer',
+                  opacity: isPaying ? 0.6 : 1,
+                }}
+              >
+                <span>{isPaying ? 'Đang chuyển hướng sang cổng thanh toán...' : 'Thanh toán'}</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: '24px' }}>
@@ -130,27 +269,7 @@ export default function OrderDetail() {
           {paymentError}
         </div>
       )}
-
-      {order.status === 'Pending' && (
-        <div style={{ marginTop: '24px', textAlign: 'center' }}>
-          <button
-            onClick={handlePay}
-            disabled={isPaying}
-            style={{
-              padding: '12px 32px',
-              backgroundColor: '#10b981',
-              color: '#fff',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: isPaying ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isPaying ? 'Đang chuyển hướng sang cổng thanh toán...' : 'Thanh toán'}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
+

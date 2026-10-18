@@ -51,7 +51,7 @@ public sealed class PaymentWebhookIdempotencyTests
         envMock.SetupGet(e => e.EnvironmentName).Returns("Development");
         var configMock = new Mock<IConfiguration>();
 
-        var controller = new PaymentsController(service, envMock.Object, configMock.Object, gateway);
+        var controller = new PaymentsController(service, envMock.Object, configMock.Object, paymentGateway: gateway);
 
         return (sharedDbName, db, clockMock, service, controller, gateway, fixedTime);
     }
