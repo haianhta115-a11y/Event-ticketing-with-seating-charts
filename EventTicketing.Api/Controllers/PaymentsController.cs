@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using EventTicketing.Api.Models.Orders;
 using EventTicketing.Api.Security;
 using EventTicketing.Api.Services;
@@ -13,6 +14,7 @@ public sealed class PaymentsController(
     IPaymentService paymentService,
     IWebHostEnvironment environment,
     IConfiguration configuration,
+    ILogger<PaymentsController>? logger = null,
     IPaymentGateway? paymentGateway = null) : ControllerBase
 {
     private readonly IPaymentGateway _gateway = paymentGateway ?? new MockPaymentGateway();
@@ -92,7 +94,8 @@ public sealed class PaymentsController(
     }
 
     /// <summary>
-    /// S-19 / SCRUM-35 & S-20 / SCRUM-36: Webhook cho cổng thanh toán có kiểm tra chữ ký và chống xử lý trùng lặp (Idempotent)
+    /// S-19 / SCRUM-35 & S-20 / SCRUM-36: Webhook cho cổng thanh toán có kiểm tra chữ ký và chống xử lý trùng lặp (Idempotent).
+    /// S-21 / SCRUM-37 (T-48, T-49): Kiểm chữ ký trước khi đọc nội dung; ghi log kèm IP khi từ chối.
     /// </summary>
     [HttpPost("payments/mock/webhook")]
     [HttpPost("payments/webhook")]
@@ -102,11 +105,21 @@ public sealed class PaymentsController(
         [FromHeader(Name = "X-Webhook-Signature")] string? headerSignature,
         CancellationToken ct)
     {
+        // T-48: Đọc chữ ký từ body hoặc header, kiểm tra trước khi xử lý nghiệp vụ.
         var signature = request.Signature ?? headerSignature;
         var payload = $"{request.OrderId}|{request.Amount.ToString(CultureInfo.InvariantCulture)}|{request.TransactionId}|{request.Success.ToString().ToLowerInvariant()}";
+        var remoteIp = HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? "unknown";
 
         if (!_gateway.VerifyWebhookSignature(payload, signature ?? string.Empty))
         {
+            // T-49: Log lần từ chối kèm IP nguồn – KHÔNG log nội dung nhạy cảm / PII / secret.
+            logger?.LogWarning(
+                "Webhook signature rejected. RemoteIP={RemoteIP}, StatusCode={StatusCode}, Reason={Reason}, Timestamp={TimestampUtc}",
+                remoteIp,
+                401,
+                "INVALID_SIGNATURE",
+                DateTime.UtcNow);
+
             return StatusCode(StatusCodes.Status401Unauthorized, new
             {
                 success = false,
@@ -127,6 +140,15 @@ public sealed class PaymentsController(
 
         if (result.Outcome == ProcessWebhookOutcome.OrderNotFound)
         {
+            // T-49: Chữ ký đúng nhưng đơn hàng không tồn tại – log kèm mã đơn và IP.
+            logger?.LogWarning(
+                "Webhook order not found. RemoteIP={RemoteIP}, StatusCode={StatusCode}, OrderId={OrderId}, Reason={Reason}, Timestamp={TimestampUtc}",
+                remoteIp,
+                404,
+                request.OrderId,
+                "ORDER_NOT_FOUND",
+                DateTime.UtcNow);
+
             return NotFound(new
             {
                 success = false,

@@ -263,6 +263,32 @@ public static class SeatReservationEndpoints
         .Produces(StatusCodes.Status404NotFound)
         .RequireAuthorization(AccessPolicies.SeatBooking);
 
+        app.MapGet("/api/orders/{orderId:int}/payment-status", async (
+    int orderId,
+            EventTicketing.Api.Data.AppDbContext db) =>
+        {
+            var order = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+                .FirstOrDefaultAsync(db.Orders, o => o.Id == orderId);
+
+            if (order == null)
+            {
+                return Results.NotFound(new { message = "Không tìm thấy đơn hàng." });
+            }
+
+            var statusText = order.Status.ToString();
+            var isPaid = statusText.Equals("Paid", StringComparison.OrdinalIgnoreCase)
+                         || statusText.Equals("Confirmed", StringComparison.OrdinalIgnoreCase);
+
+            return Results.Ok(new
+            {
+                orderId = order.Id,
+                status = statusText,
+                isPaid = isPaid,
+                ticketUrl = $"/tickets/order/{order.Id}"
+            });
+        })
+        .WithName("GetOrderPaymentStatus")
+        .AllowAnonymous();
         return app;
     }
 

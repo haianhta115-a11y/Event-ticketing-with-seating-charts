@@ -175,7 +175,7 @@ public sealed class MockPaymentGatewayTests
         var envMock = CreateEnvironmentMock("Development");
         var configMock = new Mock<IConfiguration>();
 
-        var controller = new PaymentsController(paymentService, envMock.Object, configMock.Object, gateway);
+        var controller = new PaymentsController(paymentService, envMock.Object, configMock.Object, new Mock<ILogger<PaymentsController>>().Object, gateway);
 
         var request = new MockWebhookRequest(
             OrderId: 10,
@@ -247,7 +247,7 @@ public sealed class MockPaymentGatewayTests
         var envMock = CreateEnvironmentMock("Development");
         var configMock = new Mock<IConfiguration>();
 
-        var controller = new PaymentsController(paymentService, envMock.Object, configMock.Object, gateway);
+        var controller = new PaymentsController(paymentService, envMock.Object, configMock.Object, new Mock<ILogger<PaymentsController>>().Object, gateway);
 
         var payload = $"77|{250000m.ToString(CultureInfo.InvariantCulture)}|MOCK-TXN-77|true";
         var signature = gateway.GenerateWebhookSignature(payload);
