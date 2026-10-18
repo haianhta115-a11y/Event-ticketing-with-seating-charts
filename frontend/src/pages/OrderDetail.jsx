@@ -4,7 +4,6 @@ import { getOrderById, payOrder } from '../api/paymentApi.js';
 import {
   isPendingOrderStatus,
   hasFailedPaymentAttempt,
-  shouldShowRetryPayment,
 } from './orderPaymentRetry.js';
 
 export default function OrderDetail() {
