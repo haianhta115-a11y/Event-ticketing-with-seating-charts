@@ -452,4 +452,154 @@ public sealed class PaymentWebhookIdempotencyTests
         var updatedOrder = await db.Orders.FindAsync(order.Id);
         Assert.Equal(OrderStatus.Pending, updatedOrder!.Status);
     }
+
+    /// <summary>
+    /// Story S-24 (Task T-54):
+    /// Xử lý kết quả thanh toán THẤT BẠI từ cổng thanh toán (Webhook callback):
+    /// 1. Thêm bản ghi mới vào bảng payment_events phản ánh giao dịch thất bại.
+    /// 2. Ghi nhận log nhật ký thanh toán thất bại.
+    /// 3. KHÔNG cập nhật trạng thái đơn hàng (vẫn giữ nguyên Pending).
+    /// 4. KHÔNG giải phóng hoặc thay đổi các ghế đang giữ (ghế vẫn Held).
+    /// 5. Trả về phản hồi HTTP 200 OK để cổng thanh toán xác nhận đã nhận webhook.
+    /// </summary>
+    [Fact]
+    public async Task Webhook_FailedPayment_InsertsPaymentEvent_OrderRemainsPending_SeatHoldsUnchanged_Returns200Ok()
+    {
+        var (_, db, _, _, controller, gateway, now) = CreateTestHarness();
+        var (order, seats, items) = await CreateOrderWithSeatsAsync(db, now, orderId: 306, seatCount: 2, unitPrice: 150000m);
+
+        var transactionId = "TXN-MOCK-FAILED-S24";
+        var payload = $"{order.Id}|{order.TotalAmount.ToString(CultureInfo.InvariantCulture)}|{transactionId}|false";
+        var signature = gateway.GenerateWebhookSignature(payload);
+
+        var webhookRequest = new MockWebhookRequest(
+            OrderId: order.Id,
+            TransactionId: transactionId,
+            Amount: order.TotalAmount,
+            Success: false,
+            Signature: signature);
+
+        var response = await controller.HandleMockWebhook(webhookRequest, null, CancellationToken.None);
+
+        // 5. Trả về phản hồi HTTP 200 OK cho cổng thanh toán
+        var okResult = Assert.IsType<OkObjectResult>(response);
+        Assert.Equal(StatusCodes.Status200OK, okResult.StatusCode ?? 200);
+
+        // 1. Bản ghi mới trong bảng payment_events phản ánh nỗ lực thất bại
+        var paymentEvents = await db.PaymentEvents.Where(pe => pe.TransactionId == transactionId).ToListAsync();
+        Assert.Single(paymentEvents);
+        Assert.Equal(transactionId, paymentEvents[0].TransactionId);
+        Assert.Equal(order.Id, paymentEvents[0].OrderId);
+        Assert.Equal(order.TotalAmount, paymentEvents[0].Amount);
+        Assert.False(paymentEvents[0].Success);
+
+        // 3. ĐIỀU KIỆN TIÊN QUYẾT: Trạng thái đơn hàng KHÔNG đổi, giữ nguyên Pending
+        var updatedOrder = await db.Orders.FindAsync(order.Id);
+        Assert.NotNull(updatedOrder);
+        Assert.Equal(OrderStatus.Pending, updatedOrder.Status);
+        Assert.Null(updatedOrder.PaidAt);
+        Assert.Null(updatedOrder.PaidAmount);
+
+        // 4. ĐIỀU KIỆN TIÊN QUYẾT: Ghế giữ KHÔNG bị giải phóng, giữ nguyên Held
+        foreach (var seat in seats)
+        {
+            var updatedSeat = await db.Seats.FindAsync(seat.Id);
+            Assert.NotNull(updatedSeat);
+            Assert.Equal(SeatStatus.Held, updatedSeat.Status);
+            Assert.Equal(order.UserId, updatedSeat.HeldByUserId);
+            Assert.NotNull(updatedSeat.HeldUntil);
+        }
+
+        // Không có vé / OrderItem nào được đánh dấu là Paid
+        var paidItems = await db.OrderItems.Where(oi => oi.OrderId == order.Id && oi.Status == OrderStatus.Paid).ToListAsync();
+        Assert.Empty(paidItems);
+    }
+
+    /// <summary>
+    /// Story S-24: Khi cổng gửi lại webhook thất bại nhiều lần (Idempotency),
+    /// Tất cả lần gọi đều trả về 200 OK và bảng payment_events chỉ ghi nhận 1 lần.
+    /// </summary>
+    [Fact]
+    public async Task Webhook_FailedPayment_SequentialRetries_OnlyOnePaymentEventRecorded_All200Ok()
+    {
+        var (_, db, _, _, controller, gateway, now) = CreateTestHarness();
+        var (order, seats, items) = await CreateOrderWithSeatsAsync(db, now, orderId: 307, seatCount: 1, unitPrice: 200000m);
+
+        var transactionId = "TXN-FAILED-RETRY-S24";
+        var payload = $"{order.Id}|{order.TotalAmount.ToString(CultureInfo.InvariantCulture)}|{transactionId}|false";
+        var signature = gateway.GenerateWebhookSignature(payload);
+
+        var webhookRequest = new MockWebhookRequest(
+            OrderId: order.Id,
+            TransactionId: transactionId,
+            Amount: order.TotalAmount,
+            Success: false,
+            Signature: signature);
+
+        // Gửi webhook thất bại 3 lần
+        for (var i = 0; i < 3; i++)
+        {
+            var response = await controller.HandleMockWebhook(webhookRequest, null, CancellationToken.None);
+            var okResult = Assert.IsType<OkObjectResult>(response);
+            Assert.Equal(StatusCodes.Status200OK, okResult.StatusCode ?? 200);
+        }
+
+        // payment_events chỉ lưu duy nhất 1 bản ghi
+        var count = await db.PaymentEvents.CountAsync(pe => pe.TransactionId == transactionId);
+        Assert.Equal(1, count);
+
+        // Đơn hàng vẫn Pending, ghế vẫn Held
+        var updatedOrder = await db.Orders.FindAsync(order.Id);
+        Assert.Equal(OrderStatus.Pending, updatedOrder!.Status);
+
+        var updatedSeat = await db.Seats.FindAsync(seats[0].Id);
+        Assert.Equal(SeatStatus.Held, updatedSeat!.Status);
+    }
+
+    /// <summary>
+    /// Story S-24: Người dùng thanh toán thất bại lần 1 (order vẫn Pending, ghế vẫn Held),
+    /// Sau đó người dùng thực hiện thanh toán lại thành công với TransactionId mới -> Đơn chuyển Paid.
+    /// </summary>
+    [Fact]
+    public async Task Webhook_FailedPayment_FollowedBySuccessfulRetry_OrderMarksPaidAndSeatsSold()
+    {
+        var (_, db, _, _, controller, gateway, now) = CreateTestHarness();
+        var (order, seats, items) = await CreateOrderWithSeatsAsync(db, now, orderId: 308, seatCount: 1, unitPrice: 300000m);
+
+        // Lần 1: Thanh toán thất bại
+        var failTxn = "TXN-FAIL-THEN-SUCCESS-1";
+        var failPayload = $"{order.Id}|{order.TotalAmount.ToString(CultureInfo.InvariantCulture)}|{failTxn}|false";
+        var failSignature = gateway.GenerateWebhookSignature(failPayload);
+        var failRequest = new MockWebhookRequest(order.Id, failTxn, order.TotalAmount, false, failSignature);
+
+        var failResponse = await controller.HandleMockWebhook(failRequest, null, CancellationToken.None);
+        Assert.IsType<OkObjectResult>(failResponse);
+
+        var orderAfterFail = await db.Orders.FindAsync(order.Id);
+        Assert.Equal(OrderStatus.Pending, orderAfterFail!.Status);
+
+        // Lần 2: Người dùng thử lại và thanh toán thành công
+        var successTxn = "TXN-FAIL-THEN-SUCCESS-2";
+        var successPayload = $"{order.Id}|{order.TotalAmount.ToString(CultureInfo.InvariantCulture)}|{successTxn}|true";
+        var successSignature = gateway.GenerateWebhookSignature(successPayload);
+        var successRequest = new MockWebhookRequest(order.Id, successTxn, order.TotalAmount, true, successSignature);
+
+        var successResponse = await controller.HandleMockWebhook(successRequest, null, CancellationToken.None);
+        Assert.IsType<OkObjectResult>(successResponse);
+
+        // Cả 2 sự kiện đều có trong payment_events
+        var events = await db.PaymentEvents.Where(pe => pe.OrderId == order.Id).OrderBy(pe => pe.CreatedAt).ToListAsync();
+        Assert.Equal(2, events.Count);
+        Assert.False(events[0].Success);
+        Assert.True(events[1].Success);
+
+        // Đơn hàng đã thành công chuyển sang Paid
+        var finalOrder = await db.Orders.FindAsync(order.Id);
+        Assert.Equal(OrderStatus.Paid, finalOrder!.Status);
+        Assert.Equal(order.TotalAmount, finalOrder.PaidAmount);
+
+        // Ghế chuyển sang Sold
+        var finalSeat = await db.Seats.FindAsync(seats[0].Id);
+        Assert.Equal(SeatStatus.Sold, finalSeat!.Status);
+    }
 }

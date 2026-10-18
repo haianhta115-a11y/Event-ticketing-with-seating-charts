@@ -19,6 +19,15 @@ public sealed class PaymentsController(
 {
     private readonly IPaymentGateway _gateway = paymentGateway ?? new MockPaymentGateway();
 
+    public PaymentsController(
+        IPaymentService paymentService,
+        IWebHostEnvironment environment,
+        IConfiguration configuration,
+        IPaymentGateway? paymentGateway)
+        : this(paymentService, environment, configuration, null, paymentGateway)
+    {
+    }
+
     [HttpPost("orders/{id:int}/pay")]
     [Authorize(Policy = AccessPolicies.SeatBooking)]
     public async Task<IActionResult> PayOrder(int id, CancellationToken ct)
@@ -81,6 +90,18 @@ public sealed class PaymentsController(
                 outcome = result.Outcome.ToString(),
                 message = result.Message
             });
+        }
+
+        if (!request.Success || result.Outcome == ConfirmPaymentOutcome.GatewayFailed)
+        {
+            // Story S-24 (Task T-54): Ghi log nhật ký đơn hàng khi cổng thanh toán báo thất bại
+            logger?.LogWarning(
+                "Payment failed for order {OrderId}. TransactionId={TransactionId}, Amount={Amount}, Reason={Reason}, Timestamp={TimestampUtc}",
+                request.OrderId,
+                request.TransactionId,
+                request.Amount,
+                "PAYMENT_FAILED",
+                DateTime.UtcNow);
         }
 
         var isSuccess = result.Outcome is ConfirmPaymentOutcome.Paid or ConfirmPaymentOutcome.AlreadyPaid;
@@ -165,6 +186,18 @@ public sealed class PaymentsController(
                 outcome = result.Outcome.ToString(),
                 message = result.Message
             });
+        }
+
+        if (!request.Success || result.PaymentResult?.Outcome == ConfirmPaymentOutcome.GatewayFailed)
+        {
+            // Story S-24 (Task T-54): Thất bại tại cổng thanh toán - Ghi log nhật ký đơn hàng thanh toán thất bại
+            logger?.LogWarning(
+                "Payment failed for order {OrderId}. TransactionId={TransactionId}, Amount={Amount}, Reason={Reason}, Timestamp={TimestampUtc}",
+                request.OrderId,
+                request.TransactionId,
+                request.Amount,
+                "PAYMENT_FAILED",
+                DateTime.UtcNow);
         }
 
         // Bỏ qua mã đã có, trả 200 OK cho webhook trùng để cổng ngừng gửi lại; không có lỗi 500

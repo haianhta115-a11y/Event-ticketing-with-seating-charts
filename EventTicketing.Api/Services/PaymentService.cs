@@ -219,15 +219,41 @@ public sealed class PaymentService(
             return new ConfirmPaymentResult(ConfirmPaymentOutcome.AlreadyPaid, "Đơn hàng đã được thanh toán trước đó.");
         }
 
-        // 3. Success = false -> GatewayFailed
+        // 3. Success = false -> GatewayFailed (Story S-24 / Task T-54)
         if (!request.Success)
         {
+            // Đảm bảo ghi nhận sự kiện thất bại vào bảng payment_events nếu chưa có (ví dụ gọi qua ConfirmPaymentAsync trực tiếp)
+            if (!string.IsNullOrWhiteSpace(request.TransactionId))
+            {
+                var existingEvent = await db.PaymentEvents
+                    .AnyAsync(pe => pe.TransactionId == request.TransactionId, cancellationToken);
+
+                if (!existingEvent)
+                {
+                    var paymentEvent = new PaymentEvent
+                    {
+                        TransactionId = request.TransactionId,
+                        OrderId = order.Id,
+                        Amount = request.Amount,
+                        Success = false,
+                        RawPayload = $"{order.Id}|{request.Amount.ToString(CultureInfo.InvariantCulture)}|{request.TransactionId}|false",
+                        CreatedAt = now
+                    };
+                    db.PaymentEvents.Add(paymentEvent);
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+            }
+
             if (transaction != null)
             {
                 await transaction.CommitAsync(cancellationToken);
             }
-            logger?.LogWarning("Payment gateway reported failure for order {OrderId}, transaction {TransactionId}",
-                order.Id, request.TransactionId);
+
+            // Ghi log nhật ký đơn hàng: thanh toán thất bại. Đơn hàng giữ nguyên Pending/Waiting, ghế giữ không đổi.
+            logger?.LogWarning(
+                "Payment failed for order {OrderId}. Transaction: {TransactionId}. Order status remains {Status}, seat holds remain intact.",
+                order.Id, request.TransactionId, order.Status);
+
             return new ConfirmPaymentResult(ConfirmPaymentOutcome.GatewayFailed, "Thanh toán tại cổng không thành công.");
         }
 
