@@ -60,12 +60,15 @@ builder.Services.AddOptions<OrderOptions>()
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 PaymentGatewayConfiguration.ConfigurePaymentGateway(builder.Services, builder.Configuration, builder.Environment);
 builder.Services.AddScoped<ExpiredSeatHoldCleanup>();
+builder.Services.AddScoped<ExpiredOrderCleanup>();
 builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddActivationEmail(builder.Configuration, builder.Environment);
 // No background database writes by default in local development or tests.
 var localEnvironment = builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing");
 if (builder.Configuration.GetValue<bool?>("BackgroundJobs:SeatHoldCleanupEnabled") ?? !localEnvironment)
     builder.Services.AddHostedService<EventTicketing.Api.BackgroundServices.ExpiredSeatHoldCleanupService>();
+if (builder.Configuration.GetValue<bool?>("BackgroundJobs:OrderCleanupEnabled") ?? !localEnvironment)
+    builder.Services.AddHostedService<EventTicketing.Api.BackgroundServices.ExpiredOrderCleanupService>();
 
 var jwtKey = builder.Configuration["Jwt:Key"] ?? builder.Configuration["JWT_KEY"];
 if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
