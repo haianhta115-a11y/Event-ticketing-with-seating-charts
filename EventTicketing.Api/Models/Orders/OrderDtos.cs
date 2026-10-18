@@ -20,7 +20,11 @@ public sealed record OrderDto(
     DateTime CreatedAtUtc,
     DateTime ServerTimeUtc,
     int RemainingSeconds,
-    IReadOnlyList<OrderItemDto> Items);
+    IReadOnlyList<OrderItemDto> Items,
+    bool HasFailedPayments = false)
+{
+    public bool HasFailedPayment => HasFailedPayments;
+}
 
 public sealed record LostSeatDto(
     int SeatId,

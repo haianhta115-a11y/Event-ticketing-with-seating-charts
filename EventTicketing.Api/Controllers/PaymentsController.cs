@@ -83,6 +83,18 @@ public sealed class PaymentsController(
             });
         }
 
+        if (!request.Success || result.Outcome == ConfirmPaymentOutcome.GatewayFailed)
+        {
+            // Story S-24 (Task T-54): Ghi log nhật ký đơn hàng khi cổng thanh toán báo thất bại
+            logger?.LogWarning(
+                "Payment failed for order {OrderId}. TransactionId={TransactionId}, Amount={Amount}, Reason={Reason}, Timestamp={TimestampUtc}",
+                request.OrderId,
+                request.TransactionId,
+                request.Amount,
+                "PAYMENT_FAILED",
+                DateTime.UtcNow);
+        }
+
         var isSuccess = result.Outcome is ConfirmPaymentOutcome.Paid or ConfirmPaymentOutcome.AlreadyPaid;
 
         return Ok(new
@@ -94,7 +106,7 @@ public sealed class PaymentsController(
     }
 
     /// <summary>
-    /// S-19 / SCRUM-35: Webhook cho cổng thanh toán giả lập có kiểm tra chữ ký hợp lệ.
+    /// S-19 / SCRUM-35 & S-20 / SCRUM-36: Webhook cho cổng thanh toán có kiểm tra chữ ký và chống xử lý trùng lặp (Idempotent).
     /// S-21 / SCRUM-37 (T-48, T-49): Kiểm chữ ký trước khi đọc nội dung; ghi log kèm IP khi từ chối.
     /// </summary>
     [HttpPost("payments/mock/webhook")]
@@ -128,11 +140,17 @@ public sealed class PaymentsController(
             });
         }
 
-        var result = await paymentService.ConfirmPaymentAsync(
-            new PaymentResultRequest(request.OrderId, request.TransactionId, request.Amount, request.Success),
-            ct);
+        var webhookRequest = new WebhookPaymentRequest(
+            OrderId: request.OrderId,
+            TransactionId: request.TransactionId ?? string.Empty,
+            Amount: request.Amount,
+            Success: request.Success,
+            RawPayload: payload,
+            Signature: signature);
 
-        if (result.Outcome == ConfirmPaymentOutcome.OrderNotFound)
+        var result = await paymentService.ProcessWebhookAsync(webhookRequest, ct);
+
+        if (result.Outcome == ProcessWebhookOutcome.OrderNotFound)
         {
             // T-49: Chữ ký đúng nhưng đơn hàng không tồn tại – log kèm mã đơn và IP.
             logger?.LogWarning(
@@ -151,12 +169,36 @@ public sealed class PaymentsController(
             });
         }
 
-        var isSuccess = result.Outcome is ConfirmPaymentOutcome.Paid or ConfirmPaymentOutcome.AlreadyPaid;
+        if (result.Outcome == ProcessWebhookOutcome.InvalidData)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                outcome = result.Outcome.ToString(),
+                message = result.Message
+            });
+        }
 
+        if (!request.Success || result.PaymentResult?.Outcome == ConfirmPaymentOutcome.GatewayFailed)
+        {
+            // Story S-24 (Task T-54): Thất bại tại cổng thanh toán - Ghi log nhật ký đơn hàng thanh toán thất bại
+            logger?.LogWarning(
+                "Payment failed for order {OrderId}. TransactionId={TransactionId}, Amount={Amount}, Reason={Reason}, Timestamp={TimestampUtc}",
+                request.OrderId,
+                request.TransactionId,
+                request.Amount,
+                "PAYMENT_FAILED",
+                DateTime.UtcNow);
+        }
+
+        // Bỏ qua mã đã có, trả 200 OK cho webhook trùng để cổng ngừng gửi lại; không có lỗi 500
         return Ok(new
         {
-            success = isSuccess,
-            outcome = result.Outcome.ToString(),
+            success = result.Success,
+            isDuplicate = result.IsDuplicate,
+            outcome = result.Outcome == ProcessWebhookOutcome.DuplicateIgnored
+                ? "DuplicateIgnored"
+                : result.PaymentResult?.Outcome.ToString(),
             message = result.Message
         });
     }

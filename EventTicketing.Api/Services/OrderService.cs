@@ -69,7 +69,11 @@ public sealed class OrderService(
             }
             logger?.LogInformation("User {UserId} already has active pending order {OrderId} for showtime {ShowtimeId}. Returning existing order.",
                 userId, existingPendingOrder.Id, showtimeId);
-            return CreateOrderResult.Success(MapToDto(existingPendingOrder, now), isExistingPendingOrder: true);
+
+            var hasFailedPayments = await db.PaymentEvents
+                .AnyAsync(pe => pe.OrderId == existingPendingOrder.Id && pe.Success == false, cancellationToken);
+
+            return CreateOrderResult.Success(MapToDto(existingPendingOrder, now, hasFailedPayments), isExistingPendingOrder: true);
         }
 
         // 3. Đọc danh sách ghế đang giữ của user từ cơ sở dữ liệu
@@ -186,7 +190,12 @@ public sealed class OrderService(
                     .ThenInclude(s => s.SeatCategory)
             .FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == userId, cancellationToken);
 
-        return order == null ? null : MapToDto(order, now);
+        if (order == null) return null;
+
+        var hasFailedPayments = await db.PaymentEvents
+            .AnyAsync(pe => pe.OrderId == order.Id && pe.Success == false, cancellationToken);
+
+        return MapToDto(order, now, hasFailedPayments);
     }
 
     public async Task<OrderDto?> GetPendingOrderForShowtimeAsync(int showtimeId, int userId, CancellationToken cancellationToken = default)
@@ -200,10 +209,15 @@ public sealed class OrderService(
                     .ThenInclude(s => s.SeatCategory)
             .FirstOrDefaultAsync(o => o.UserId == userId && o.ShowtimeId == showtimeId && o.Status == OrderStatus.Pending && o.ExpiresAt > now, cancellationToken);
 
-        return order == null ? null : MapToDto(order, now);
+        if (order == null) return null;
+
+        var hasFailedPayments = await db.PaymentEvents
+            .AnyAsync(pe => pe.OrderId == order.Id && pe.Success == false, cancellationToken);
+
+        return MapToDto(order, now, hasFailedPayments);
     }
 
-    private static OrderDto MapToDto(Order order, DateTime now)
+    private static OrderDto MapToDto(Order order, DateTime now, bool hasFailedPayments = false)
     {
         var remainingSeconds = Math.Max(0, (int)Math.Round((order.ExpiresAt - now).TotalSeconds));
         var items = order.OrderItems.Select(oi => new OrderItemDto(
@@ -225,7 +239,8 @@ public sealed class OrderService(
             order.CreatedAt,
             now,
             remainingSeconds,
-            items
+            items,
+            hasFailedPayments
         );
     }
 }
