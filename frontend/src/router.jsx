@@ -11,6 +11,8 @@ import RequireRoleRoute from './components/RequireRoleRoute.jsx';
 import Home from './pages/Home.jsx';
 import ShowtimeDetail from './pages/ShowtimeDetail.jsx';
 import SeatMap from './pages/SeatMap.jsx';
+import OrderDetail from './pages/OrderDetail.jsx';
+import MockPaymentGateway from './pages/MockPaymentGateway.jsx';
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +30,18 @@ export const router = createBrowserRouter([
       {
         path: 'shows/:id/seats',
         element: <SeatMap />,
+      },
+      {
+        path: 'orders/:id',
+        element: <OrderDetail />,
+      },
+      {
+        path: 'mock-gateway',
+        element: <MockPaymentGateway />,
+      },
+      {
+        path: 'sandbox-gateway',
+        element: <MockPaymentGateway />,
       },
       {
         path: 'login',

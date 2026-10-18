@@ -66,7 +66,8 @@ public sealed class SeatMapImportService(AppDbContext db, TimeProvider timeProvi
             command.CommandText = """
                 SELECT EXISTS (SELECT 1 FROM pg_constraint
                   WHERE contype = 'f' AND confrelid IN ('seats'::regclass, 'seat_categories'::regclass)
-                    AND NOT (conrelid = 'seats'::regclass AND confrelid = 'seat_categories'::regclass))
+                    AND NOT (conrelid = 'seats'::regclass AND confrelid = 'seat_categories'::regclass)
+                    AND NOT (conrelid = 'order_items'::regclass AND confrelid = 'seats'::regclass))
                 """;
             if ((bool)(await command.ExecuteScalarAsync(cancellationToken))!)
                 throw new SeatMapReferencedRecordsException();
@@ -86,7 +87,11 @@ public sealed class SeatMapImportService(AppDbContext db, TimeProvider timeProvi
         var existingByKey = existingSeats.ToDictionary(s => SeatKey(s.Row, s.Number), StringComparer.Ordinal);
         var obsoleteIds = existingSeats.Where(s => !requestedKeys.Contains(SeatKey(s.Row, s.Number))).Select(s => s.Id).ToList();
         if (obsoleteIds.Count > 0)
+        {
+            if (await db.OrderItems.AnyAsync(oi => obsoleteIds.Contains(oi.SeatId), cancellationToken))
+                throw new SeatMapReferencedRecordsException();
             await db.Seats.Where(s => s.ShowtimeId == ShowtimeId && obsoleteIds.Contains(s.Id)).ExecuteDeleteAsync(cancellationToken);
+        }
 
         var obsoleteCategories = categories
             .Where(entry => !requestedCategories.ContainsKey(entry.Key))

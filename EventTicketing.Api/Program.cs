@@ -51,6 +51,14 @@ builder.Services.AddOptions<SeatHoldOptions>()
     .ValidateOnStart();
 builder.Services.AddScoped<SalesStatusService>();
 builder.Services.AddScoped<ISeatPricingService, SeatPricingService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddOptions<OrderOptions>()
+    .Bind(builder.Configuration.GetSection(OrderOptions.SectionName))
+    .Validate(options => options.PaymentTimeoutMinutes is > 0 and <= 1440,
+        "Orders:PaymentTimeoutMinutes must be between 1 and 1440 minutes.")
+    .ValidateOnStart();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+PaymentGatewayConfiguration.ConfigurePaymentGateway(builder.Services, builder.Configuration, builder.Environment);
 builder.Services.AddScoped<ExpiredSeatHoldCleanup>();
 builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddActivationEmail(builder.Configuration, builder.Environment);
