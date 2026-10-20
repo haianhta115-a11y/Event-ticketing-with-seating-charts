@@ -196,6 +196,12 @@ public sealed class SeatReservationService(AppDbContext db, IReservationClock cl
             throw;
         }
 
+        var paidSeatIds = await db.OrderItems
+            .AsNoTracking()
+            .Where(oi => oi.ShowtimeId == ShowtimeId && oi.Order.Status == OrderStatus.Paid)
+            .Select(oi => oi.SeatId)
+            .ToHashSetAsync(cancellationToken);
+
         var seatsData = await db.Seats
             .AsNoTracking()
             .Where(s => s.ShowtimeId == ShowtimeId)
@@ -210,11 +216,7 @@ public sealed class SeatReservationService(AppDbContext db, IReservationClock cl
                 s.Number,
                 s.X,
                 s.Y,
-                Status = (s.Status == SeatStatus.Sold || db.OrderItems.Any(oi => oi.SeatId == s.Id && oi.ShowtimeId == ShowtimeId && oi.Order.Status == OrderStatus.Paid))
-                    ? SeatStatus.Sold
-                    : (s.Status == SeatStatus.Held && s.HeldUntil <= now)
-                        ? SeatStatus.Available
-                        : s.Status,
+                s.Status,
                 s.HeldUntil,
                 s.HeldByUserId
             })
@@ -227,12 +229,19 @@ public sealed class SeatReservationService(AppDbContext db, IReservationClock cl
             string displayStatus;
             bool canSelect;
 
-            if (s.Status == SeatStatus.Sold)
+            var isSold = s.Status == SeatStatus.Sold || (paidSeatIds.Count > 0 && paidSeatIds.Contains(s.Id));
+            var effectiveStatus = isSold
+                ? SeatStatus.Sold
+                : (s.Status == SeatStatus.Held && s.HeldUntil <= now)
+                    ? SeatStatus.Available
+                    : s.Status;
+
+            if (effectiveStatus == SeatStatus.Sold)
             {
                 displayStatus = "Sold";
                 canSelect = false;
             }
-            else if (s.Status == SeatStatus.Held)
+            else if (effectiveStatus == SeatStatus.Held)
             {
                 if (currentUserId.HasValue && s.HeldByUserId == currentUserId.Value)
                 {
@@ -260,7 +269,7 @@ public sealed class SeatReservationService(AppDbContext db, IReservationClock cl
                 s.X,
                 s.Y,
                 displayStatus,
-                s.Status == SeatStatus.Held ? s.HeldUntil : null,
+                effectiveStatus == SeatStatus.Held ? s.HeldUntil : null,
                 canSelect,
                 s.Category,
                 s.Price);
