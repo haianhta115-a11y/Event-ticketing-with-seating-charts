@@ -161,7 +161,7 @@ export default function SeatPricingManager({
         setError('Giá vé phải là số nguyên (không có phần thập phân).');
         return;
       }
-      if (num > 20000) {
+      if (num > Number.MAX_SAFE_INTEGER) {
         setError('Giá vé vượt quá giới hạn cho phép.');
         return;
       }
