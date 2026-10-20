@@ -56,6 +56,8 @@ public sealed class OrderService(
         // 2. Chống bấm đúp / Idempotency: Kiểm tra nếu đã có đơn hàng PENDING còn hạn cho suất này
         // AC 3: "Giả sử tôi đã có một đơn đang chờ cho suất này, Khi bấm 'đặt vé' lần nữa, Thì được đưa về đơn đang chờ đó thay vì tạo đơn thứ hai"
         var existingPendingOrder = await db.Orders
+            .Include(o => o.Showtime)
+                .ThenInclude(s => s.Event)
             .Include(o => o.OrderItems)
                 .ThenInclude(oi => oi.Seat)
                     .ThenInclude(s => s.SeatCategory)
@@ -70,10 +72,23 @@ public sealed class OrderService(
             logger?.LogInformation("User {UserId} already has active pending order {OrderId} for showtime {ShowtimeId}. Returning existing order.",
                 userId, existingPendingOrder.Id, showtimeId);
 
-            var hasFailedPayments = await db.PaymentEvents
-                .AnyAsync(pe => pe.OrderId == existingPendingOrder.Id && pe.Success == false, cancellationToken);
+            var events = await db.PaymentEvents
+                .Where(pe => pe.OrderId == existingPendingOrder.Id)
+                .OrderBy(pe => pe.CreatedAt)
+                .Select(pe => new OrderPaymentEventDto(
+                    pe.TransactionId,
+                    pe.Amount ?? 0m,
+                    pe.Success ?? false,
+                    pe.CreatedAt
+                ))
+                .ToListAsync(cancellationToken);
 
-            return CreateOrderResult.Success(MapToDto(existingPendingOrder, now, hasFailedPayments), isExistingPendingOrder: true);
+            var hasFailedPayments = events.Any(pe => !pe.Success);
+            var failedPaymentCount = events.Count(pe => !pe.Success);
+
+            return CreateOrderResult.Success(
+                MapToDto(existingPendingOrder, now, hasFailedPayments, failedPaymentCount, events),
+                isExistingPendingOrder: true);
         }
 
         // 3. Đọc danh sách ghế đang giữ của user từ cơ sở dữ liệu
@@ -173,6 +188,7 @@ public sealed class OrderService(
             throw;
         }
 
+        order.Showtime = showtime;
         logger?.LogInformation("Order {OrderId} successfully created for user {UserId}, showtime {ShowtimeId}, seats count {Count}, total {Total}",
             order.Id, userId, showtimeId, orderItems.Count, totalAmount);
 
@@ -192,10 +208,29 @@ public sealed class OrderService(
 
         if (order == null) return null;
 
-        var hasFailedPayments = await db.PaymentEvents
-            .AnyAsync(pe => pe.OrderId == order.Id && pe.Success == false, cancellationToken);
+        if (order.Showtime == null && order.ShowtimeId > 0)
+        {
+            var st = await db.Showtimes
+                .Include(s => s.Event)
+                .FirstOrDefaultAsync(s => s.Id == order.ShowtimeId, cancellationToken);
+            if (st != null) order.Showtime = st;
+        }
 
-        return MapToDto(order, now, hasFailedPayments);
+        var events = await db.PaymentEvents
+            .Where(pe => pe.OrderId == order.Id)
+            .OrderBy(pe => pe.CreatedAt)
+            .Select(pe => new OrderPaymentEventDto(
+                pe.TransactionId,
+                pe.Amount ?? 0m,
+                pe.Success ?? false,
+                pe.CreatedAt
+            ))
+            .ToListAsync(cancellationToken);
+
+        var hasFailedPayments = events.Any(pe => !pe.Success);
+        var failedPaymentCount = events.Count(pe => !pe.Success);
+
+        return MapToDto(order, now, hasFailedPayments, failedPaymentCount, events);
     }
 
     public async Task<OrderDto?> GetPendingOrderForShowtimeAsync(int showtimeId, int userId, CancellationToken cancellationToken = default)
@@ -211,14 +246,39 @@ public sealed class OrderService(
 
         if (order == null) return null;
 
-        var hasFailedPayments = await db.PaymentEvents
-            .AnyAsync(pe => pe.OrderId == order.Id && pe.Success == false, cancellationToken);
+        if (order.Showtime == null && order.ShowtimeId > 0)
+        {
+            var st = await db.Showtimes
+                .Include(s => s.Event)
+                .FirstOrDefaultAsync(s => s.Id == order.ShowtimeId, cancellationToken);
+            if (st != null) order.Showtime = st;
+        }
 
-        return MapToDto(order, now, hasFailedPayments);
+        var events = await db.PaymentEvents
+            .Where(pe => pe.OrderId == order.Id)
+            .OrderBy(pe => pe.CreatedAt)
+            .Select(pe => new OrderPaymentEventDto(
+                pe.TransactionId,
+                pe.Amount ?? 0m,
+                pe.Success ?? false,
+                pe.CreatedAt
+            ))
+            .ToListAsync(cancellationToken);
+
+        var hasFailedPayments = events.Any(pe => !pe.Success);
+        var failedPaymentCount = events.Count(pe => !pe.Success);
+
+        return MapToDto(order, now, hasFailedPayments, failedPaymentCount, events);
     }
 
-    private static OrderDto MapToDto(Order order, DateTime now, bool hasFailedPayments = false)
+    private static OrderDto MapToDto(
+        Order order,
+        DateTime now,
+        bool hasFailedPayments = false,
+        int failedPaymentCount = 0,
+        IReadOnlyList<OrderPaymentEventDto>? paymentEvents = null)
     {
+        var isExpired = order.Status == OrderStatus.Expired || (order.Status == OrderStatus.Pending && order.ExpiresAt <= now);
         var remainingSeconds = Math.Max(0, (int)Math.Round((order.ExpiresAt - now).TotalSeconds));
         var items = order.OrderItems.Select(oi => new OrderItemDto(
             oi.Id,
@@ -240,7 +300,13 @@ public sealed class OrderService(
             now,
             remainingSeconds,
             items,
-            hasFailedPayments
+            hasFailedPayments,
+            failedPaymentCount,
+            paymentEvents ?? Array.Empty<OrderPaymentEventDto>(),
+            order.Showtime?.Event?.Name,
+            order.Showtime?.StartTime,
+            order.Showtime?.EndTime,
+            isExpired
         );
     }
 }

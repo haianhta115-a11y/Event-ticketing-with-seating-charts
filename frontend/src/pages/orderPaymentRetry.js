@@ -94,6 +94,13 @@ export const hasFailedPaymentAttempt = (orderData) => {
 export const shouldShowRetryPayment = (orderData) => {
   if (!orderData) return false;
   const data = orderData.order || orderData;
+  const isExpired = Boolean(
+    data.isExpired ||
+    data.status === 'Expired' ||
+    (data.expiresAtUtc && new Date(data.expiresAtUtc).getTime() <= (data.serverTimeUtc ? new Date(data.serverTimeUtc).getTime() : Date.now())) ||
+    (typeof data.remainingSeconds === 'number' && data.remainingSeconds <= 0 && data.status === 'Pending')
+  );
+  if (isExpired) return false;
   return isPendingOrderStatus(data?.status) && hasFailedPaymentAttempt(data);
 };
 

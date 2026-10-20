@@ -10,6 +10,12 @@ public sealed record OrderItemDto(
     string? CategoryName,
     decimal UnitPrice);
 
+public sealed record OrderPaymentEventDto(
+    string TransactionId,
+    decimal Amount,
+    bool Success,
+    DateTime CreatedAtUtc);
+
 public sealed record OrderDto(
     int Id,
     int UserId,
@@ -21,7 +27,13 @@ public sealed record OrderDto(
     DateTime ServerTimeUtc,
     int RemainingSeconds,
     IReadOnlyList<OrderItemDto> Items,
-    bool HasFailedPayments = false)
+    bool HasFailedPayments = false,
+    int FailedPaymentCount = 0,
+    IReadOnlyList<OrderPaymentEventDto>? PaymentEvents = null,
+    string? EventName = null,
+    DateTime? ShowtimeStartTimeUtc = null,
+    DateTime? ShowtimeEndTimeUtc = null,
+    bool IsExpired = false)
 {
     public bool HasFailedPayment => HasFailedPayments;
 }

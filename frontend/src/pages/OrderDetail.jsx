@@ -4,6 +4,7 @@ import { getOrderById, payOrder } from '../api/paymentApi.js';
 import {
   isPendingOrderStatus,
   hasFailedPaymentAttempt,
+  shouldShowRetryPayment,
 } from './orderPaymentRetry.js';
 
 export default function OrderDetail() {
@@ -87,14 +88,24 @@ export default function OrderDetail() {
   }
 
   const orderData = order?.order || order;
-  const isPending = isPendingOrderStatus(orderData?.status);
-  const hasFailedHistory = Boolean(
+  const isExpired = Boolean(
+    orderData?.isExpired ||
+    orderData?.status === 'Expired' ||
+    (orderData?.serverTimeUtc && orderData?.expiresAtUtc && new Date(orderData.expiresAtUtc).getTime() <= new Date(orderData.serverTimeUtc).getTime()) ||
+    (typeof orderData?.remainingSeconds === 'number' && orderData.remainingSeconds <= 0 && orderData.status === 'Pending')
+  );
+  const isPending = isPendingOrderStatus(orderData?.status) && !isExpired;
+  const hasFailedPayment = Boolean(
     orderData?.hasFailedPayments ||
     orderData?.hasFailedPayment ||
     orderData?.hasFailedPaymentHistory ||
+    (typeof orderData?.failedPaymentCount === 'number' && orderData.failedPaymentCount > 0) ||
     hasFailedPaymentAttempt(orderData)
   );
-  const showRetryButton = isPending && hasFailedHistory;
+
+  // QA-B05: Nút Retry ("Thanh toán lại") CHỈ HIỆN KHI đơn Pending + có payment thất bại
+  const showRetryButton = isPending && (shouldShowRetryPayment(orderData) || hasFailedPayment);
+  const showInitialPayButton = isPending && !hasFailedPayment;
 
   return (
     <div style={{ maxWidth: '700px', margin: '40px auto', padding: '24px', backgroundColor: 'var(--card-bg, #1e293b)', borderRadius: '12px', color: '#fff' }}>
@@ -218,7 +229,7 @@ export default function OrderDetail() {
                 </svg>
                 <span>{isPaying ? 'Đang chuyển hướng sang cổng thanh toán...' : 'Thanh toán lại'}</span>
               </button>
-            ) : (
+            ) : showInitialPayButton ? (
               <button
                 type="button"
                 onClick={handlePay}
@@ -243,7 +254,7 @@ export default function OrderDetail() {
               >
                 <span>{isPaying ? 'Đang chuyển hướng sang cổng thanh toán...' : 'Thanh toán'}</span>
               </button>
-            )}
+            ) : null}
           </div>
         )}
       </div>

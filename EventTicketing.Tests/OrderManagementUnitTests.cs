@@ -492,6 +492,11 @@ public sealed class OrderManagementUnitTests
         Assert.NotNull(result);
         Assert.True(result.HasFailedPayments);
         Assert.True(result.HasFailedPayment);
+        Assert.Equal(1, result.FailedPaymentCount);
+        Assert.NotNull(result.PaymentEvents);
+        Assert.Single(result.PaymentEvents);
+        Assert.Equal("TXN-FAIL-001", result.PaymentEvents[0].TransactionId);
+        Assert.False(result.PaymentEvents[0].Success);
     }
 
     [Fact]
@@ -531,5 +536,50 @@ public sealed class OrderManagementUnitTests
         Assert.NotNull(result);
         Assert.False(result.HasFailedPayments);
         Assert.False(result.HasFailedPayment);
+        Assert.Equal(0, result.FailedPaymentCount);
+        Assert.NotNull(result.PaymentEvents);
+        Assert.Single(result.PaymentEvents);
+        Assert.True(result.PaymentEvents[0].Success);
+    }
+
+    [Fact]
+    public async Task GetPendingOrderForShowtimeAsync_WithFailedPaymentEvent_ReturnsHasFailedPaymentsTrue()
+    {
+        var (db, _, service, now) = CreateTestHarness();
+        const int userId = 42;
+        const int orderId = 3;
+        const int showtimeId = 10;
+
+        var order = new Order
+        {
+            Id = orderId,
+            UserId = userId,
+            ShowtimeId = showtimeId,
+            Status = OrderStatus.Pending,
+            TotalAmount = 250000m,
+            ExpiresAt = now.AddMinutes(15),
+            CreatedAt = now
+        };
+
+        var failedEvent = new PaymentEvent
+        {
+            TransactionId = "TXN-FAIL-003",
+            OrderId = orderId,
+            Amount = 250000m,
+            Success = false,
+            RawPayload = "3|250000|TXN-FAIL-003|false",
+            CreatedAt = now
+        };
+
+        db.Orders.Add(order);
+        db.PaymentEvents.Add(failedEvent);
+        await db.SaveChangesAsync();
+
+        var result = await service.GetPendingOrderForShowtimeAsync(showtimeId, userId);
+
+        Assert.NotNull(result);
+        Assert.True(result.HasFailedPayments);
+        Assert.True(result.HasFailedPayment);
+        Assert.Equal(1, result.FailedPaymentCount);
     }
 }
