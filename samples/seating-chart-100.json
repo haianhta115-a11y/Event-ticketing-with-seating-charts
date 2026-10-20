@@ -1,0 +1,906 @@
+{
+  "layoutName": "Sơ đồ 100 ghế - 3 hạng vé (VIP, Standard, Economy)",
+  "totalCapacity": 100,
+  "seats": [
+    {
+      "section": "Main",
+      "row": "A",
+      "seatNumber": "1",
+      "category": "VIP",
+      "status": "Available",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "section": "Main",
+      "row": "A",
+      "seatNumber": "2",
+      "category": "VIP",
+      "status": "Available",
+      "x": 40,
+      "y": 0
+    },
+    {
+      "section": "Main",
+      "row": "A",
+      "seatNumber": "3",
+      "category": "VIP",
+      "status": "Available",
+      "x": 80,
+      "y": 0
+    },
+    {
+      "section": "Main",
+      "row": "A",
+      "seatNumber": "4",
+      "category": "VIP",
+      "status": "Available",
+      "x": 120,
+      "y": 0
+    },
+    {
+      "section": "Main",
+      "row": "A",
+      "seatNumber": "5",
+      "category": "VIP",
+      "status": "Available",
+      "x": 160,
+      "y": 0
+    },
+    {
+      "section": "Main",
+      "row": "A",
+      "seatNumber": "6",
+      "category": "VIP",
+      "status": "Available",
+      "x": 220,
+      "y": 0
+    },
+    {
+      "section": "Main",
+      "row": "A",
+      "seatNumber": "7",
+      "category": "VIP",
+      "status": "Available",
+      "x": 260,
+      "y": 0
+    },
+    {
+      "section": "Main",
+      "row": "A",
+      "seatNumber": "8",
+      "category": "VIP",
+      "status": "Available",
+      "x": 300,
+      "y": 0
+    },
+    {
+      "section": "Main",
+      "row": "A",
+      "seatNumber": "9",
+      "category": "VIP",
+      "status": "Available",
+      "x": 340,
+      "y": 0
+    },
+    {
+      "section": "Main",
+      "row": "A",
+      "seatNumber": "10",
+      "category": "VIP",
+      "status": "Available",
+      "x": 380,
+      "y": 0
+    },
+    {
+      "section": "Main",
+      "row": "B",
+      "seatNumber": "1",
+      "category": "VIP",
+      "status": "Available",
+      "x": 0,
+      "y": 40
+    },
+    {
+      "section": "Main",
+      "row": "B",
+      "seatNumber": "2",
+      "category": "VIP",
+      "status": "Available",
+      "x": 40,
+      "y": 40
+    },
+    {
+      "section": "Main",
+      "row": "B",
+      "seatNumber": "3",
+      "category": "VIP",
+      "status": "Available",
+      "x": 80,
+      "y": 40
+    },
+    {
+      "section": "Main",
+      "row": "B",
+      "seatNumber": "4",
+      "category": "VIP",
+      "status": "Available",
+      "x": 120,
+      "y": 40
+    },
+    {
+      "section": "Main",
+      "row": "B",
+      "seatNumber": "5",
+      "category": "VIP",
+      "status": "Available",
+      "x": 160,
+      "y": 40
+    },
+    {
+      "section": "Main",
+      "row": "B",
+      "seatNumber": "6",
+      "category": "VIP",
+      "status": "Available",
+      "x": 220,
+      "y": 40
+    },
+    {
+      "section": "Main",
+      "row": "B",
+      "seatNumber": "7",
+      "category": "VIP",
+      "status": "Available",
+      "x": 260,
+      "y": 40
+    },
+    {
+      "section": "Main",
+      "row": "B",
+      "seatNumber": "8",
+      "category": "VIP",
+      "status": "Available",
+      "x": 300,
+      "y": 40
+    },
+    {
+      "section": "Main",
+      "row": "B",
+      "seatNumber": "9",
+      "category": "VIP",
+      "status": "Available",
+      "x": 340,
+      "y": 40
+    },
+    {
+      "section": "Main",
+      "row": "B",
+      "seatNumber": "10",
+      "category": "VIP",
+      "status": "Available",
+      "x": 380,
+      "y": 40
+    },
+    {
+      "section": "Main",
+      "row": "C",
+      "seatNumber": "1",
+      "category": "VIP",
+      "status": "Available",
+      "x": 0,
+      "y": 80
+    },
+    {
+      "section": "Main",
+      "row": "C",
+      "seatNumber": "2",
+      "category": "VIP",
+      "status": "Available",
+      "x": 40,
+      "y": 80
+    },
+    {
+      "section": "Main",
+      "row": "C",
+      "seatNumber": "3",
+      "category": "VIP",
+      "status": "Available",
+      "x": 80,
+      "y": 80
+    },
+    {
+      "section": "Main",
+      "row": "C",
+      "seatNumber": "4",
+      "category": "VIP",
+      "status": "Available",
+      "x": 120,
+      "y": 80
+    },
+    {
+      "section": "Main",
+      "row": "C",
+      "seatNumber": "5",
+      "category": "VIP",
+      "status": "Available",
+      "x": 160,
+      "y": 80
+    },
+    {
+      "section": "Main",
+      "row": "C",
+      "seatNumber": "6",
+      "category": "VIP",
+      "status": "Available",
+      "x": 220,
+      "y": 80
+    },
+    {
+      "section": "Main",
+      "row": "C",
+      "seatNumber": "7",
+      "category": "VIP",
+      "status": "Available",
+      "x": 260,
+      "y": 80
+    },
+    {
+      "section": "Main",
+      "row": "C",
+      "seatNumber": "8",
+      "category": "VIP",
+      "status": "Available",
+      "x": 300,
+      "y": 80
+    },
+    {
+      "section": "Main",
+      "row": "C",
+      "seatNumber": "9",
+      "category": "VIP",
+      "status": "Available",
+      "x": 340,
+      "y": 80
+    },
+    {
+      "section": "Main",
+      "row": "C",
+      "seatNumber": "10",
+      "category": "VIP",
+      "status": "Available",
+      "x": 380,
+      "y": 80
+    },
+    {
+      "section": "Main",
+      "row": "D",
+      "seatNumber": "1",
+      "category": "Standard",
+      "status": "Available",
+      "x": 0,
+      "y": 120
+    },
+    {
+      "section": "Main",
+      "row": "D",
+      "seatNumber": "2",
+      "category": "Standard",
+      "status": "Available",
+      "x": 40,
+      "y": 120
+    },
+    {
+      "section": "Main",
+      "row": "D",
+      "seatNumber": "3",
+      "category": "Standard",
+      "status": "Available",
+      "x": 80,
+      "y": 120
+    },
+    {
+      "section": "Main",
+      "row": "D",
+      "seatNumber": "4",
+      "category": "Standard",
+      "status": "Available",
+      "x": 120,
+      "y": 120
+    },
+    {
+      "section": "Main",
+      "row": "D",
+      "seatNumber": "5",
+      "category": "Standard",
+      "status": "Available",
+      "x": 160,
+      "y": 120
+    },
+    {
+      "section": "Main",
+      "row": "D",
+      "seatNumber": "6",
+      "category": "Standard",
+      "status": "Available",
+      "x": 220,
+      "y": 120
+    },
+    {
+      "section": "Main",
+      "row": "D",
+      "seatNumber": "7",
+      "category": "Standard",
+      "status": "Available",
+      "x": 260,
+      "y": 120
+    },
+    {
+      "section": "Main",
+      "row": "D",
+      "seatNumber": "8",
+      "category": "Standard",
+      "status": "Available",
+      "x": 300,
+      "y": 120
+    },
+    {
+      "section": "Main",
+      "row": "D",
+      "seatNumber": "9",
+      "category": "Standard",
+      "status": "Available",
+      "x": 340,
+      "y": 120
+    },
+    {
+      "section": "Main",
+      "row": "D",
+      "seatNumber": "10",
+      "category": "Standard",
+      "status": "Available",
+      "x": 380,
+      "y": 120
+    },
+    {
+      "section": "Main",
+      "row": "E",
+      "seatNumber": "1",
+      "category": "Standard",
+      "status": "Available",
+      "x": 0,
+      "y": 160
+    },
+    {
+      "section": "Main",
+      "row": "E",
+      "seatNumber": "2",
+      "category": "Standard",
+      "status": "Available",
+      "x": 40,
+      "y": 160
+    },
+    {
+      "section": "Main",
+      "row": "E",
+      "seatNumber": "3",
+      "category": "Standard",
+      "status": "Available",
+      "x": 80,
+      "y": 160
+    },
+    {
+      "section": "Main",
+      "row": "E",
+      "seatNumber": "4",
+      "category": "Standard",
+      "status": "Available",
+      "x": 120,
+      "y": 160
+    },
+    {
+      "section": "Main",
+      "row": "E",
+      "seatNumber": "5",
+      "category": "Standard",
+      "status": "Available",
+      "x": 160,
+      "y": 160
+    },
+    {
+      "section": "Main",
+      "row": "E",
+      "seatNumber": "6",
+      "category": "Standard",
+      "status": "Available",
+      "x": 220,
+      "y": 160
+    },
+    {
+      "section": "Main",
+      "row": "E",
+      "seatNumber": "7",
+      "category": "Standard",
+      "status": "Available",
+      "x": 260,
+      "y": 160
+    },
+    {
+      "section": "Main",
+      "row": "E",
+      "seatNumber": "8",
+      "category": "Standard",
+      "status": "Available",
+      "x": 300,
+      "y": 160
+    },
+    {
+      "section": "Main",
+      "row": "E",
+      "seatNumber": "9",
+      "category": "Standard",
+      "status": "Available",
+      "x": 340,
+      "y": 160
+    },
+    {
+      "section": "Main",
+      "row": "E",
+      "seatNumber": "10",
+      "category": "Standard",
+      "status": "Available",
+      "x": 380,
+      "y": 160
+    },
+    {
+      "section": "Main",
+      "row": "F",
+      "seatNumber": "1",
+      "category": "Standard",
+      "status": "Available",
+      "x": 0,
+      "y": 200
+    },
+    {
+      "section": "Main",
+      "row": "F",
+      "seatNumber": "2",
+      "category": "Standard",
+      "status": "Available",
+      "x": 40,
+      "y": 200
+    },
+    {
+      "section": "Main",
+      "row": "F",
+      "seatNumber": "3",
+      "category": "Standard",
+      "status": "Available",
+      "x": 80,
+      "y": 200
+    },
+    {
+      "section": "Main",
+      "row": "F",
+      "seatNumber": "4",
+      "category": "Standard",
+      "status": "Available",
+      "x": 120,
+      "y": 200
+    },
+    {
+      "section": "Main",
+      "row": "F",
+      "seatNumber": "5",
+      "category": "Standard",
+      "status": "Available",
+      "x": 160,
+      "y": 200
+    },
+    {
+      "section": "Main",
+      "row": "F",
+      "seatNumber": "6",
+      "category": "Standard",
+      "status": "Available",
+      "x": 220,
+      "y": 200
+    },
+    {
+      "section": "Main",
+      "row": "F",
+      "seatNumber": "7",
+      "category": "Standard",
+      "status": "Available",
+      "x": 260,
+      "y": 200
+    },
+    {
+      "section": "Main",
+      "row": "F",
+      "seatNumber": "8",
+      "category": "Standard",
+      "status": "Available",
+      "x": 300,
+      "y": 200
+    },
+    {
+      "section": "Main",
+      "row": "F",
+      "seatNumber": "9",
+      "category": "Standard",
+      "status": "Available",
+      "x": 340,
+      "y": 200
+    },
+    {
+      "section": "Main",
+      "row": "F",
+      "seatNumber": "10",
+      "category": "Standard",
+      "status": "Available",
+      "x": 380,
+      "y": 200
+    },
+    {
+      "section": "Main",
+      "row": "G",
+      "seatNumber": "1",
+      "category": "Standard",
+      "status": "Available",
+      "x": 0,
+      "y": 240
+    },
+    {
+      "section": "Main",
+      "row": "G",
+      "seatNumber": "2",
+      "category": "Standard",
+      "status": "Available",
+      "x": 40,
+      "y": 240
+    },
+    {
+      "section": "Main",
+      "row": "G",
+      "seatNumber": "3",
+      "category": "Standard",
+      "status": "Available",
+      "x": 80,
+      "y": 240
+    },
+    {
+      "section": "Main",
+      "row": "G",
+      "seatNumber": "4",
+      "category": "Standard",
+      "status": "Available",
+      "x": 120,
+      "y": 240
+    },
+    {
+      "section": "Main",
+      "row": "G",
+      "seatNumber": "5",
+      "category": "Standard",
+      "status": "Available",
+      "x": 160,
+      "y": 240
+    },
+    {
+      "section": "Main",
+      "row": "G",
+      "seatNumber": "6",
+      "category": "Standard",
+      "status": "Available",
+      "x": 220,
+      "y": 240
+    },
+    {
+      "section": "Main",
+      "row": "G",
+      "seatNumber": "7",
+      "category": "Standard",
+      "status": "Available",
+      "x": 260,
+      "y": 240
+    },
+    {
+      "section": "Main",
+      "row": "G",
+      "seatNumber": "8",
+      "category": "Standard",
+      "status": "Available",
+      "x": 300,
+      "y": 240
+    },
+    {
+      "section": "Main",
+      "row": "G",
+      "seatNumber": "9",
+      "category": "Standard",
+      "status": "Available",
+      "x": 340,
+      "y": 240
+    },
+    {
+      "section": "Main",
+      "row": "G",
+      "seatNumber": "10",
+      "category": "Standard",
+      "status": "Available",
+      "x": 380,
+      "y": 240
+    },
+    {
+      "section": "Main",
+      "row": "H",
+      "seatNumber": "1",
+      "category": "Economy",
+      "status": "Available",
+      "x": 0,
+      "y": 280
+    },
+    {
+      "section": "Main",
+      "row": "H",
+      "seatNumber": "2",
+      "category": "Economy",
+      "status": "Available",
+      "x": 40,
+      "y": 280
+    },
+    {
+      "section": "Main",
+      "row": "H",
+      "seatNumber": "3",
+      "category": "Economy",
+      "status": "Available",
+      "x": 80,
+      "y": 280
+    },
+    {
+      "section": "Main",
+      "row": "H",
+      "seatNumber": "4",
+      "category": "Economy",
+      "status": "Available",
+      "x": 120,
+      "y": 280
+    },
+    {
+      "section": "Main",
+      "row": "H",
+      "seatNumber": "5",
+      "category": "Economy",
+      "status": "Available",
+      "x": 160,
+      "y": 280
+    },
+    {
+      "section": "Main",
+      "row": "H",
+      "seatNumber": "6",
+      "category": "Economy",
+      "status": "Available",
+      "x": 220,
+      "y": 280
+    },
+    {
+      "section": "Main",
+      "row": "H",
+      "seatNumber": "7",
+      "category": "Economy",
+      "status": "Available",
+      "x": 260,
+      "y": 280
+    },
+    {
+      "section": "Main",
+      "row": "H",
+      "seatNumber": "8",
+      "category": "Economy",
+      "status": "Available",
+      "x": 300,
+      "y": 280
+    },
+    {
+      "section": "Main",
+      "row": "H",
+      "seatNumber": "9",
+      "category": "Economy",
+      "status": "Available",
+      "x": 340,
+      "y": 280
+    },
+    {
+      "section": "Main",
+      "row": "H",
+      "seatNumber": "10",
+      "category": "Economy",
+      "status": "Available",
+      "x": 380,
+      "y": 280
+    },
+    {
+      "section": "Main",
+      "row": "I",
+      "seatNumber": "1",
+      "category": "Economy",
+      "status": "Available",
+      "x": 0,
+      "y": 320
+    },
+    {
+      "section": "Main",
+      "row": "I",
+      "seatNumber": "2",
+      "category": "Economy",
+      "status": "Available",
+      "x": 40,
+      "y": 320
+    },
+    {
+      "section": "Main",
+      "row": "I",
+      "seatNumber": "3",
+      "category": "Economy",
+      "status": "Available",
+      "x": 80,
+      "y": 320
+    },
+    {
+      "section": "Main",
+      "row": "I",
+      "seatNumber": "4",
+      "category": "Economy",
+      "status": "Available",
+      "x": 120,
+      "y": 320
+    },
+    {
+      "section": "Main",
+      "row": "I",
+      "seatNumber": "5",
+      "category": "Economy",
+      "status": "Available",
+      "x": 160,
+      "y": 320
+    },
+    {
+      "section": "Main",
+      "row": "I",
+      "seatNumber": "6",
+      "category": "Economy",
+      "status": "Available",
+      "x": 220,
+      "y": 320
+    },
+    {
+      "section": "Main",
+      "row": "I",
+      "seatNumber": "7",
+      "category": "Economy",
+      "status": "Available",
+      "x": 260,
+      "y": 320
+    },
+    {
+      "section": "Main",
+      "row": "I",
+      "seatNumber": "8",
+      "category": "Economy",
+      "status": "Available",
+      "x": 300,
+      "y": 320
+    },
+    {
+      "section": "Main",
+      "row": "I",
+      "seatNumber": "9",
+      "category": "Economy",
+      "status": "Available",
+      "x": 340,
+      "y": 320
+    },
+    {
+      "section": "Main",
+      "row": "I",
+      "seatNumber": "10",
+      "category": "Economy",
+      "status": "Available",
+      "x": 380,
+      "y": 320
+    },
+    {
+      "section": "Main",
+      "row": "J",
+      "seatNumber": "1",
+      "category": "Economy",
+      "status": "Available",
+      "x": 0,
+      "y": 360
+    },
+    {
+      "section": "Main",
+      "row": "J",
+      "seatNumber": "2",
+      "category": "Economy",
+      "status": "Available",
+      "x": 40,
+      "y": 360
+    },
+    {
+      "section": "Main",
+      "row": "J",
+      "seatNumber": "3",
+      "category": "Economy",
+      "status": "Available",
+      "x": 80,
+      "y": 360
+    },
+    {
+      "section": "Main",
+      "row": "J",
+      "seatNumber": "4",
+      "category": "Economy",
+      "status": "Available",
+      "x": 120,
+      "y": 360
+    },
+    {
+      "section": "Main",
+      "row": "J",
+      "seatNumber": "5",
+      "category": "Economy",
+      "status": "Available",
+      "x": 160,
+      "y": 360
+    },
+    {
+      "section": "Main",
+      "row": "J",
+      "seatNumber": "6",
+      "category": "Economy",
+      "status": "Available",
+      "x": 220,
+      "y": 360
+    },
+    {
+      "section": "Main",
+      "row": "J",
+      "seatNumber": "7",
+      "category": "Economy",
+      "status": "Available",
+      "x": 260,
+      "y": 360
+    },
+    {
+      "section": "Main",
+      "row": "J",
+      "seatNumber": "8",
+      "category": "Economy",
+      "status": "Available",
+      "x": 300,
+      "y": 360
+    },
+    {
+      "section": "Main",
+      "row": "J",
+      "seatNumber": "9",
+      "category": "Economy",
+      "status": "Available",
+      "x": 340,
+      "y": 360
+    },
+    {
+      "section": "Main",
+      "row": "J",
+      "seatNumber": "10",
+      "category": "Economy",
+      "status": "Available",
+      "x": 380,
+      "y": 360
+    }
+  ]
+}

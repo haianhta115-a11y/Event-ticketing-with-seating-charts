@@ -10,50 +10,32 @@ public sealed record OrderItemDto(
     string? CategoryName,
     decimal UnitPrice);
 
+public sealed record OrderPaymentEventDto(
+    string TransactionId,
+    decimal Amount,
+    bool Success,
+    DateTime CreatedAtUtc);
+
 public sealed record OrderDto(
     int Id,
     int UserId,
     int ShowtimeId,
-    string? EventName,
-    DateTime? ShowtimeStartTimeUtc,
-    DateTime? ShowtimeEndTimeUtc,
     string Status,
     decimal TotalAmount,
     DateTime ExpiresAtUtc,
     DateTime CreatedAtUtc,
     DateTime ServerTimeUtc,
     int RemainingSeconds,
-    bool IsExpired,
-    IReadOnlyList<OrderItemDto> Items)
+    IReadOnlyList<OrderItemDto> Items,
+    bool HasFailedPayments = false,
+    int FailedPaymentCount = 0,
+    IReadOnlyList<OrderPaymentEventDto>? PaymentEvents = null,
+    string? EventName = null,
+    DateTime? ShowtimeStartTimeUtc = null,
+    DateTime? ShowtimeEndTimeUtc = null,
+    bool IsExpired = false)
 {
-    public OrderDto(
-        int id,
-        int userId,
-        int showtimeId,
-        string status,
-        decimal totalAmount,
-        DateTime expiresAtUtc,
-        DateTime createdAtUtc,
-        DateTime serverTimeUtc,
-        int remainingSeconds,
-        IReadOnlyList<OrderItemDto> items)
-        : this(
-            id,
-            userId,
-            showtimeId,
-            null,
-            null,
-            null,
-            status,
-            totalAmount,
-            expiresAtUtc,
-            createdAtUtc,
-            serverTimeUtc,
-            remainingSeconds,
-            status.Equals("Expired", StringComparison.OrdinalIgnoreCase) || remainingSeconds <= 0,
-            items)
-    {
-    }
+    public bool HasFailedPayment => HasFailedPayments;
 }
 
 public sealed record LostSeatDto(

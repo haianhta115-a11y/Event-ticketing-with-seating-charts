@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<SalesTransition> SalesTransitions { get; set; }
     public DbSet<Order> Orders { get; set; }
     public DbSet<OrderItem> OrderItems { get; set; }
+    public DbSet<PaymentEvent> PaymentEvents { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -181,6 +182,11 @@ public class AppDbContext : DbContext
             entity.Property(e => e.ExpiresAt).HasColumnName("expires_at").HasColumnType("timestamp with time zone");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp with time zone");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamp with time zone");
+            entity.Property(e => e.PaidAt).HasColumnName("paid_at").HasColumnType("timestamp with time zone");
+            entity.Property(e => e.PaymentReference).HasColumnName("payment_reference").HasMaxLength(255);
+            entity.Property(e => e.PaidAmount).HasColumnName("paid_amount").HasPrecision(18, 2);
+            entity.Property(e => e.RequiresPaymentReview).HasColumnName("requires_payment_review").HasDefaultValue(false);
+            entity.Property(e => e.PaymentReviewReason).HasColumnName("payment_review_reason");
 
             entity.Property(e => e.Status)
                 .HasColumnName("status")
@@ -249,6 +255,26 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.OrderId);
         });
 
+        modelBuilder.Entity<PaymentEvent>(entity =>
+        {
+            entity.ToTable("payment_events");
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.TransactionId).HasColumnName("transaction_id").HasMaxLength(255).IsRequired();
+            entity.Property(e => e.OrderId).HasColumnName("order_id");
+            entity.Property(e => e.Amount).HasColumnName("amount").HasPrecision(18, 2);
+            entity.Property(e => e.Success).HasColumnName("success");
+            entity.Property(e => e.RawPayload).HasColumnName("raw_payload").IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasColumnType("timestamp with time zone");
+
+            entity.HasIndex(e => e.TransactionId).IsUnique();
+            entity.HasIndex(e => e.OrderId);
+
+            entity.HasOne(e => e.Order)
+                .WithMany()
+                .HasForeignKey(e => e.OrderId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
         // Seed Roles
         modelBuilder.Entity<Role>().HasData(
             new Role { Id = 1, Name = "Buyer" },
@@ -286,5 +312,35 @@ public class AppDbContext : DbContext
             new UserRole { UserId = 1, RoleId = 5 }, // Admin
             new UserRole { UserId = 2, RoleId = 2 }  // Organizer
         );
+    }
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        if (!Database.IsRelational())
+        {
+            var addedEvents = ChangeTracker.Entries<PaymentEvent>()
+                .Where(e => e.State == EntityState.Added)
+                .ToList();
+
+            if (addedEvents.Count > 0)
+            {
+                var existingIds = await PaymentEvents
+                    .AsNoTracking()
+                    .Select(pe => pe.TransactionId)
+                    .ToListAsync(cancellationToken);
+
+                var seen = new HashSet<string>(existingIds, StringComparer.Ordinal);
+                foreach (var entry in addedEvents)
+                {
+                    if (!seen.Add(entry.Entity.TransactionId))
+                    {
+                        throw new DbUpdateException(
+                            $"Duplicate key value violates unique constraint \"IX_payment_events_transaction_id\". Key (transaction_id)=({entry.Entity.TransactionId}) already exists.");
+                    }
+                }
+            }
+        }
+
+        return await base.SaveChangesAsync(cancellationToken);
     }
 }
